@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # --- CONFIG ---
 GITHUB_USERNAME = "mrtharatoy"
-REPO_NAME = "fb-mahabucha-bot" # ถ้าจะใช้กับมูเตทีม ให้เปลี่ยนตรงนี้เป็น fb-muteteam-bot
+REPO_NAME = "fb-mahabucha-bot" # ถ้าจะใช้กับมูเตทีม ให้แก้ตรงนี้เป็น fb-muteteam-bot
 BRANCH = "main"
 FOLDER_NAME = "images" 
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
@@ -17,11 +17,10 @@ GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
 
 CACHED_FILES = {}
 FILES_LOADED = False
-IS_LOADING = False  # 👈 ตัวแปรใหม่ ป้องกันการโหลดซ้ำซ้อนจนเครื่องค้าง
 
 # --- 1. โหลดรายชื่อรูป ---
 def update_file_list():
-    global CACHED_FILES, FILES_LOADED, IS_LOADING
+    global CACHED_FILES, FILES_LOADED
     print("🔄 Loading file list from GitHub...")
     api_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{FOLDER_NAME}?ref={BRANCH}"
     headers = {"User-Agent": "Bot", "Accept": "application/vnd.github.v3+json"}
@@ -44,8 +43,9 @@ def update_file_list():
             print(f"⚠️ Github Error: {r.status_code}")
     except Exception as e:
         print(f"❌ Error loading files: {e}")
-    finally:
-        IS_LOADING = False # โหลดเสร็จแล้วปลดล็อค
+
+# 🔥 สั่งโหลดรูปเป็นแบคกราวด์ทันที (เพิ่ม daemon=True กัน Render ค้าง)
+threading.Thread(target=update_file_list, daemon=True).start()
 
 def get_image_url(filename):
     return f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{REPO_NAME}/{BRANCH}/{FOLDER_NAME}/{filename}"
@@ -56,17 +56,19 @@ def take_thread_control(recipient_id):
     data = {"recipient": {"id": recipient_id}}
     requests.post("https://graph.facebook.com/v19.0/me/take_thread_control", params=params, json=data)
 
-# --- ฟังก์ชันส่งข้อความ (แบบฮึดสู้ทะลุ 24 ชม.) ---
+# --- ฟังก์ชันส่งข้อความ (แบบพยายามเต็มที่ ฮึดสู้) ---
 def send_message(recipient_id, text):
     print(f"💬 Sending: {text}")
     params = {"access_token": PAGE_ACCESS_TOKEN}
     
+    # 1. ลองส่งแบบปกติก่อน
     data = {
         "recipient": {"id": recipient_id},
         "message": {"text": text, "metadata": "BOT_SENT_THIS"}
     }
     r = requests.post("https://graph.facebook.com/v19.0/me/messages", params=params, json=data)
     
+    # 2. ถ้าติดกฎ 24 ชม. ให้ลองดัน Tag ทะลุไป
     if r.status_code != 200:
         print(f"⚠️ Normal send failed ({r.status_code}). Trying Tag...")
         data_tag = {
@@ -81,6 +83,7 @@ def send_image(recipient_id, image_url):
     print(f"📤 Sending Image...")
     params = {"access_token": PAGE_ACCESS_TOKEN}
     
+    # 1. ลองส่งรูปแบบปกติ
     data = {
         "recipient": {"id": recipient_id},
         "message": {
@@ -90,6 +93,7 @@ def send_image(recipient_id, image_url):
     }
     r = requests.post("https://graph.facebook.com/v19.0/me/messages", params=params, json=data)
     
+    # 2. ถ้าติดกฎ 24 ชม. ให้ลองดัน Tag ทะลุไป
     if r.status_code != 200:
         print(f"⚠️ Normal image failed. Trying Tag...")
         data_tag = {
@@ -105,22 +109,16 @@ def send_image(recipient_id, image_url):
 
 # --- 2. LOGIC ---
 def process_message(target_id, text, is_admin_sender):
-    global IS_LOADING
-    
-    # 🔥 ระบบกัน Render ล่ม: ถ้าไฟล์ยังไม่มา ให้ตอบลูกค้าก่อน แล้วค่อยแอบไปโหลด
+    # บังคับโหลดแบบฉุกเฉินถ้ายังไม่เสร็จ
     if not FILES_LOADED:
-        if not IS_LOADING:
-            IS_LOADING = True
-            threading.Thread(target=update_file_list).start()
-            
+        print("⚠️ Files not loaded yet. Waiting...")
         take_thread_control(target_id)
-        msg = "⏳ ระบบกำลังเชื่อมต่อฐานข้อมูลภาพ กรุณารอประมาณ 1 นาที แล้วพิมพ์รหัสของท่านใหม่อีกครั้งนะครับ 🙏"
-        send_message(target_id, msg)
-        return
+        send_message(target_id, "⏳ ระบบกำลังเชื่อมต่อฐานข้อมูลภาพ กรุณารอประมาณ 1 นาที แล้วพิมพ์รหัสของท่านใหม่อีกครั้งนะครับ 🙏")
+        return 
 
     text_cleaned = text.lower().replace(" ", "")
     
-    # 📌 ใช้ Regex 7 หลักตามที่คุณต้องการ
+    # ✅ ใช้ Regex ความยาว 7 หลักตามที่คุณต้องการ
     pattern = r'(?:269|999)[a-z0-9]{7}'
     valid_format_codes = re.findall(pattern, text_cleaned)
     
