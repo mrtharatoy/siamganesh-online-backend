@@ -2,6 +2,7 @@ import os
 import requests
 import re
 import threading
+import time # 👈 เพิ่มไลบรารีสำหรับจัดการเวลา
 from flask import Flask, request
 
 app = Flask(__name__)
@@ -48,13 +49,11 @@ def update_file_list():
 def get_image_url(filename):
     return f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{REPO_NAME}/{BRANCH}/{FOLDER_NAME}/{filename}"
 
-# --- ฟังก์ชันแย่งไมค์จาก Zwiz ---
 def take_thread_control(recipient_id):
     params = {"access_token": PAGE_ACCESS_TOKEN}
     data = {"recipient": {"id": recipient_id}}
     requests.post("https://graph.facebook.com/v19.0/me/take_thread_control", params=params, json=data)
 
-# --- ฟังก์ชันส่งข้อความ ---
 def send_message(recipient_id, text):
     params = {"access_token": PAGE_ACCESS_TOKEN}
     data = {"recipient": {"id": recipient_id}, "message": {"text": text, "metadata": "BOT_SENT_THIS"}}
@@ -88,7 +87,6 @@ def process_message(target_id, text, is_admin_sender):
                     return
 
     text_cleaned = text.lower().replace(" ", "")
-    
     exact_pattern = r'(?:269|999)[a-z0-9]{7}'
     valid_codes = re.findall(exact_pattern, text_cleaned)
     attempt_pattern = r'(?:269|999)[a-z0-9]*'
@@ -127,13 +125,11 @@ def process_message(target_id, text, is_admin_sender):
         send_message(target_id, intro_msg)
 
         for code_key, filename in found_actions:
-            # 📌 แปลงรหัสเป็นพิมพ์ใหญ่ทั้งหมดด้วย .upper()
             send_message(target_id, f"ภาพถาดถวาย รหัส : {code_key.upper()}")
             send_image(target_id, get_image_url(filename))
 
     if unknown_codes:
         take_thread_control(target_id)
-        # 📌 อัปเดตข้อความให้แอดมินมาตรวจสอบ
         msg = (
             "⚠️ ขออภัยครับ \n \n"
             "ไม่พบภาพถาดถวายจากรหัสของท่าน \n \n"
@@ -158,6 +154,16 @@ def webhook():
                     if 'message' in event:
                         text = event['message'].get('text', '')
                         if event.get('message', {}).get('metadata') == "BOT_SENT_THIS": continue
+                        
+                        # 🔥 ด่านสกัดกั้นข้อความเก่าค้างท่อ (กันบอทย้อนตอบตอนเปิดเซิร์ฟ)
+                        message_timestamp = event.get('timestamp')
+                        if message_timestamp:
+                            current_time = int(time.time() * 1000) # เวลาปัจจุบัน
+                            time_diff_seconds = (current_time - message_timestamp) / 1000
+                            # ถ้าข้อความส่งมาเกิน 5 นาทีที่แล้ว (300 วินาที) ข้ามเลย!
+                            if time_diff_seconds > 300:
+                                print(f"⏳ Ignored old message from {time_diff_seconds} seconds ago.")
+                                continue
                         
                         is_echo = event.get('message', {}).get('is_echo', False)
                         if is_echo:
