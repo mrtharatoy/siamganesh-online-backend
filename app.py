@@ -107,7 +107,6 @@ def process_message(target_id, text, is_admin_sender):
     for code in all_attempts:
         if len(code) >= 5: 
             if code not in valid_codes and code not in unknown_codes:
-                # 🔥 แก้ไข: จับคู่แบบ Exact Match เท่านั้น ไม่เอาคำสั่งค้นหากว้างๆ (Substring) แล้ว
                 if code in CACHED_FILES:
                     if (code, CACHED_FILES[code]) not in found_actions:
                         found_actions.append((code, CACHED_FILES[code]))
@@ -139,7 +138,7 @@ def process_message(target_id, text, is_admin_sender):
         )
         send_message(target_id, msg)
 
-# --- 3. API สำหรับ Web Vercel ---
+# --- 3. API สำหรับ Web Vercel (ปรับปรุง EXACT MATCH 10 หลัก) ---
 @app.route('/api/search', methods=['GET'])
 def search_api():
     code = request.args.get('code', '').strip() 
@@ -166,14 +165,16 @@ def search_api():
             matched_filename = actual_filename
 
     if matched_filename:
+        # ถ้าเจอรูป ให้ส่ง URL และชื่อไฟล์จริงกลับไป
         image_url = get_image_url(matched_filename)
         return jsonify({
             "found": True, 
             "code": code, 
-            "image_url": image_url
+            "image_url": image_url,
+            "filename": matched_filename # 👈 สิ่งที่เพิ่มเข้ามา: ชื่อไฟล์จริง (เช่น 269Bb01010.jpg)
         }), 200
     else:
-        return jsonify({"found": False, "message": "ไม่พบรูปภาพ (โปรดตรวจสอบตัวพิมพ์เล็ก-ใหญ่ให้ถูกต้อง)"}), 404
+        return jsonify({"found": False, "message": "ไม่พบรูปภาพจากรหัสนี้ (โปรดตรวจสอบตัวพิมพ์เล็ก-ใหญ่ให้ถูกต้อง)"}), 404
 
 # --- 4. WEBHOOK ของ Facebook ---
 @app.route('/', methods=['GET'])
