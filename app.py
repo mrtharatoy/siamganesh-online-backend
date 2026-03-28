@@ -2,17 +2,16 @@ import os
 import requests
 import re
 import threading
-import time # 👈 เพิ่มไลบรารีสำหรับจัดการเวลา
-from flask import Flask, request
-from flask import Flask, request, jsonify # 👈 เพิ่ม jsonify
-from flask_cors import CORS # 👈 เพิ่มไลบรารี CORS
+import time
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app) # 👈 เปิดทางให้ Vercel โทรมาคุยได้
+CORS(app)
 
-# --- CONFIG (มหาบูชา) ---
+# --- CONFIG ---
 GITHUB_USERNAME = "mrtharatoy"
-REPO_NAME = "fb-mahabucha-bot" 
+REPO_NAME = "fb-mahabucha-bot" # หรือ fb-muteteam-bot
 BRANCH = "main"
 FOLDER_NAME = "images" 
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
@@ -75,7 +74,7 @@ def send_image(recipient_id, image_url):
         data_tag = {"recipient": {"id": recipient_id}, "messaging_type": "MESSAGE_TAG", "tag": "CONFIRMED_EVENT_UPDATE", "message": {"attachment": {"type": "image", "payload": {"url": image_url, "is_reusable": True}}, "metadata": "BOT_SENT_THIS"}}
         requests.post("https://graph.facebook.com/v19.0/me/messages", params=params, json=data_tag)
 
-# --- 2. LOGIC กรองรหัส ---
+# --- 2. LOGIC กรองรหัสสำหรับบอท Messenger ---
 def process_message(target_id, text, is_admin_sender):
     global FILES_LOADED
     
@@ -108,10 +107,10 @@ def process_message(target_id, text, is_admin_sender):
     for code in all_attempts:
         if len(code) >= 5: 
             if code not in valid_codes and code not in unknown_codes:
-                matched = next((k for k in CACHED_FILES.keys() if k in code), None)
-                if matched:
-                    if (matched, CACHED_FILES[matched]) not in found_actions:
-                        found_actions.append((matched, CACHED_FILES[matched]))
+                # 🔥 แก้ไข: จับคู่แบบ Exact Match เท่านั้น ไม่เอาคำสั่งค้นหากว้างๆ (Substring) แล้ว
+                if code in CACHED_FILES:
+                    if (code, CACHED_FILES[code]) not in found_actions:
+                        found_actions.append((code, CACHED_FILES[code]))
                 else:
                     unknown_codes.append(code)
 
@@ -140,48 +139,76 @@ def process_message(target_id, text, is_admin_sender):
         )
         send_message(target_id, msg)
 
-    # --- โค้ด API สำหรับ Vercel (ปรับปรุงเป็น Exact Match) ---
-    @app.route('/api/search', methods=['GET'])
-    def search_api():
-        # 1. รับค่าที่แอดมินพิมพ์มา (ไม่ใช้ .lower() เพื่อรักษาตัวพิมพ์เล็ก-ใหญ่ไว้)
-        code = request.args.get('code', '').strip() 
+# --- 3. API สำหรับ Web Vercel ---
+@app.route('/api/search', methods=['GET'])
+def search_api():
+    code = request.args.get('code', '').strip() 
+    
+    if not code:
+        return jsonify({"found": False, "message": "กรุณาระบุรหัสที่ต้องการค้นหา"}), 400
+
+    # 🔥 ล็อคความยาว! ต้องเป็น 10 หลักเป๊ะๆ และขึ้นต้นด้วย 269 หรือ 999
+    if not re.match(r'^(269|999)[A-Za-z0-9]{7}$', code):
+        return jsonify({"found": False, "message": "รูปแบบรหัสไม่ถูกต้อง (ต้องมี 10 หลักพอดีเป๊ะ)"}), 400
+
+    if not FILES_LOADED:
+        return jsonify({"found": False, "message": "ระบบกำลังเตรียมข้อมูล กรุณาลองใหม่ในอีก 1 นาที"}), 503
+
+    matched_filename = None
+    code_lower = code.lower()
+    
+    # 🔥 เช็ค Exact Match (ตรงเป๊ะทั้งตัวพิมพ์เล็ก-ใหญ่)
+    if code_lower in CACHED_FILES:
+        actual_filename = CACHED_FILES[code_lower]
+        exact_name_without_ext = actual_filename.rsplit('.', 1)[0]
         
-        if not code:
-            return jsonify({"found": False, "message": "กรุณาระบุรหัสที่ต้องการค้นหา"}), 400
-    
-        if not FILES_LOADED:
-            return jsonify({"found": False, "message": "ระบบกำลังเตรียมข้อมูล กรุณาลองใหม่ในอีก 1 นาที"}), 503
-    
-        matched_filename = None
-        code_lower = code.lower() # แปลงชั่วคราวเพื่อไปควานหาในระบบ
-        
-        # 2. เช็คว่ารหัสนี้มีในระบบไหม
-        if code_lower in CACHED_FILES:
-            actual_filename = CACHED_FILES[code_lower] # ดึงชื่อไฟล์จริงออกมา (เช่น '269AbC1234.jpg')
-            exact_name_without_ext = actual_filename.rsplit('.', 1)[0] # ตัดนามสกุลไฟล์ออก
-            
-            # 3. นำชื่อไฟล์จริง มาเทียบกับรหัสที่พิมพ์มา "แบบตรงกันเป๊ะๆ (Exact Match)"
-            if exact_name_without_ext == code:
-                matched_filename = actual_filename
-    
-        # 4. ส่งผลลัพธ์กลับไปหา Vercel
-        if matched_filename:
-            image_url = get_image_url(matched_filename)
-            return jsonify({
-                "found": True, 
-                "code": code, 
-                "image_url": image_url
-            }), 200
-        else:
-            # ถ้าพิมพ์ผิดแม้แต่ตัวเดียว (เช่น พิมพ์เล็กแทนพิมพ์ใหญ่) หรือหาไม่เจอ จะเด้งมาตรงนี้ทันที
-            return jsonify({"found": False, "message": "ไม่พบรูปภาพจากรหัสนี้ (โปรดตรวจสอบตัวพิมพ์เล็ก-ใหญ่ให้ถูกต้อง)"}), 404
-            
-# --- 3. WEBHOOK ---
+        if exact_name_without_ext == code:
+            matched_filename = actual_filename
+
+    if matched_filename:
+        image_url = get_image_url(matched_filename)
+        return jsonify({
+            "found": True, 
+            "code": code, 
+            "image_url": image_url
+        }), 200
+    else:
+        return jsonify({"found": False, "message": "ไม่พบรูปภาพ (โปรดตรวจสอบตัวพิมพ์เล็ก-ใหญ่ให้ถูกต้อง)"}), 404
+
+# --- 4. WEBHOOK ของ Facebook ---
 @app.route('/', methods=['GET'])
 def verify():
     if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.verify_token") == VERIFY_TOKEN:
         return request.args.get("hub.challenge"), 200
-    return "Bot Running", 200
+    
+    html_page = """
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ระบบแชทบอท มหาบูชา</title>
+        <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+        <style>
+            body { font-family: 'Sarabun', sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 90%; }
+            h1 { color: #d35400; margin-bottom: 10px; }
+            p { color: #555; font-size: 16px; line-height: 1.5; }
+            .status-badge { display: inline-block; background-color: #2ecc71; color: white; padding: 10px 20px; border-radius: 50px; font-weight: bold; font-size: 14px; margin-top: 20px; box-shadow: 0 2px 5px rgba(46, 204, 113, 0.4); }
+            .footer { margin-top: 30px; font-size: 12px; color: #aaa; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>🕉️ มหาบูชา บอท</h1>
+            <p>ระบบหลังบ้านสำหรับการจัดส่งภาพถาดถวายอัตโนมัติ ผ่าน Facebook Messenger</p>
+            <div class="status-badge">🟢 ระบบกำลังทำงาน (Online)</div>
+            <div class="footer">พัฒนาโดยทีมงานเทวาลัยสยามคเณศ</div>
+        </div>
+    </body>
+    </html>
+    """
+    return html_page, 200
 
 @app.route('/', methods=['POST'])
 def webhook():
@@ -194,13 +221,11 @@ def webhook():
                         text = event['message'].get('text', '')
                         if event.get('message', {}).get('metadata') == "BOT_SENT_THIS": continue
                         
-                        # 🔥 ด่านสกัดกั้นข้อความเก่าค้างท่อ (กันบอทย้อนตอบตอนเปิดเซิร์ฟ)
                         message_timestamp = event.get('timestamp')
                         if message_timestamp:
-                            current_time = int(time.time() * 1000) # เวลาปัจจุบัน
+                            current_time = int(time.time() * 1000)
                             time_diff_seconds = (current_time - message_timestamp) / 1000
-                            # ถ้าข้อความส่งมาเกิน 5 นาทีที่แล้ว (300 วินาที) ข้ามเลย!
-                            if time_diff_seconds > 300:
+                            if time_diff_seconds > 300: 
                                 print(f"⏳ Ignored old message from {time_diff_seconds} seconds ago.")
                                 continue
                         
