@@ -4,8 +4,11 @@ import re
 import threading
 import time # 👈 เพิ่มไลบรารีสำหรับจัดการเวลา
 from flask import Flask, request
+from flask import Flask, request, jsonify # 👈 เพิ่ม jsonify
+from flask_cors import CORS # 👈 เพิ่มไลบรารี CORS
 
 app = Flask(__name__)
+CORS(app) # 👈 เปิดทางให้ Vercel โทรมาคุยได้
 
 # --- CONFIG (มหาบูชา) ---
 GITHUB_USERNAME = "mrtharatoy"
@@ -136,6 +139,36 @@ def process_message(target_id, text, is_admin_sender):
             "รบกวนรอแอดมินเข้ามาตรวจสอบให้ ซักครู่นะครับ ⏳"
         )
         send_message(target_id, msg)
+
+# --- โค้ดใหม่: สร้าง API ให้ Vercel เรียกใช้งาน ---
+@app.route('/api/search', methods=['GET'])
+def search_api():
+    code = request.args.get('code', '').lower().strip()
+    if not code:
+        return jsonify({"found": False, "message": "กรุณาระบุรหัสที่ต้องการค้นหา"}), 400
+
+    if not FILES_LOADED:
+        return jsonify({"found": False, "message": "ระบบกำลังเตรียมข้อมูล กรุณาลองใหม่ในอีก 1 นาที"}), 503
+
+    # ค้นหารหัสแบบเป๊ะๆ หรือแบบมีคำค้นหาอยู่ข้างใน
+    matched_filename = None
+    if code in CACHED_FILES:
+        matched_filename = CACHED_FILES[code]
+    else:
+        # ค้นหาแบบกว้าง (เผื่อพิมพ์มาไม่ครบ)
+        matched_key = next((k for k in CACHED_FILES.keys() if code in k), None)
+        if matched_key:
+            matched_filename = CACHED_FILES[matched_key]
+
+    if matched_filename:
+        image_url = get_image_url(matched_filename)
+        return jsonify({
+            "found": True, 
+            "code": code.upper(), 
+            "image_url": image_url
+        }), 200
+    else:
+        return jsonify({"found": False, "message": "ไม่พบรูปภาพจากรหัสนี้"}), 404
 
 # --- 3. WEBHOOK ---
 @app.route('/', methods=['GET'])
