@@ -146,10 +146,11 @@ def process_message(target_id, text, page_id):
     if found_actions:
         take_thread_control(target_id, page_id)
         
+        # ข้อความตอบกลับแยกตามเพจ
         if page_name == "mahabucha":
-            intro_msg = "📸 ขออนุญาตส่งภาพนะครับ\n\nรวมภาพงานพิธี กดได้ที่ link นี้\n\n -> https://siamganesh-online-frontend.vercel.app/\n\nหรือ รับชมได้ที่หน้าเพจ \"มหาบูชา\""
+            intro_msg = "📸 ขออนุญาตส่งภาพนะครับ\n\nรวมภาพงานพิธี กดได้ที่ link นี้\n\nsiamganesh-online-frontend.vercel.app\n\nหรือ รับชมได้ที่หน้าเพจ \"มหาบูชา\""
         else:
-            intro_msg = "📸 ขออนุญาตส่งภาพนะครับ\n\nรวมภาพงานพิธี กดได้ที่ link นี้\n\n -> linktr.ee/muteteam\n\nหรือ รับชมได้ที่หน้าเพจ \"มูเตทีม\"\n\nทีมงานเทวาลัยสยามคเณศ ขอขอบคุณครับ"
+            intro_msg = "📸 ขออนุญาตส่งภาพนะครับ\n\nรวมภาพงานพิธี กดได้ที่ link นี้\n\nsiamganesh-online-frontend.vercel.app\n\nหรือ รับชมได้ที่หน้าเพจ \"มูเตทีม\"\n\nทีมงานเทวาลัยสยามคเณศ ขอขอบคุณครับ"
             
         send_message(target_id, intro_msg, page_id)
 
