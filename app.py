@@ -71,20 +71,19 @@ def send_fb_action(recipient_id, page_id, data_type, payload):
         data["tag"] = "CONFIRMED_EVENT_UPDATE"
         requests.post(url, params=params, json=data)
 
-# --- 🧠 4. MESSAGE PROCESSOR (NEW PATTERN) ---
+# --- 🧠 4. MESSAGE PROCESSOR ---
 def process_message(target_id, text, page_id):
     global FILES_LOADED
     page_name = "mahabucha" if str(page_id) == str(MAHABUCHA_PAGE_ID) else "muteteam" if str(page_id) == str(MUTETEAM_PAGE_ID) else None
     if not page_name: return
 
-    # ✨ NEW REGEX PATTERN ✨
-    # 3ตัวเลข + 2ตัวอักษร + เลข01-20 + 3ตัวเลข (เช่น 123AB05456)
+    # ✨ NEW REGEX PATTERN (10 characters)
     pattern_regex = r'\d{3}[a-z]{2}(?:0[1-9]|1[0-9]|20)\d{3}'
     
     text_cleaned = text.lower().replace(" ", "")
     valid_codes = re.findall(pattern_regex, text_cleaned)
 
-    # ถ้าไม่เจอรหัสตามแพทเทิร์นเลย ให้หยุด (นินจาโหมด)
+    # นินจาโหมด: ถ้าไม่เจอรหัสตามแพทเทิร์นเลย ให้หยุดการทำงาน
     if not valid_codes:
         return
 
@@ -102,10 +101,13 @@ def process_message(target_id, text, page_id):
         else:
             unknown_codes.append(code)
 
-    # ส่งคำนำ
+    # ส่งคำนำ (Updated Version)
     if found_imgs:
-        intro = f"📸 ขออนุญาตส่งภาพนะครับ\n\nรวมภาพงานพิธี กดได้ที่ link นี้\n\nsiamganesh-online.vercel.app\n\nหรือ รับชมได้ที่หน้าเพจ \"{'มหาบูชา' if page_name == 'mahabucha' else 'มูเตทีม'}\""
+        page_display_name = "มหาบูชา" if page_name == "mahabucha" else "มูเตทีม"
+        intro = f"📸 ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่ายครับ\n\nร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"{page_display_name}\" นะครับ 🙏✨"
+        
         send_fb_action(target_id, page_id, "text", intro)
+        
         for code_key, filename in found_imgs:
             send_fb_action(target_id, page_id, "text", f"ภาพถาดถวาย รหัส : {code_key.upper()}")
             send_fb_action(target_id, page_id, "image", get_image_url(page_name, filename))
@@ -137,7 +139,7 @@ def search_api():
 def verify():
     if request.args.get("hub.verify_token") == VERIFY_TOKEN:
         return request.args.get("hub.challenge"), 200
-    return "🟢 Siamganesh Online Backend (New Pattern) is Live", 200
+    return "🟢 Siamganesh Online Backend (New Message Pattern) is Live", 200
 
 @app.route('/', methods=['POST'])
 def webhook():
