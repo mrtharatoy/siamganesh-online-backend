@@ -101,7 +101,7 @@ def process_message(target_id, text, page_id):
         else:
             unknown_codes.append(code)
 
-    # ส่งคำนำ (Updated Version)
+    # ส่งคำนำ
     if found_imgs:
         page_display_name = "มหาบูชา" if page_name == "mahabucha" else "มูเตทีม"
         intro = f"📸 ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่ายครับ\n\nร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"{page_display_name}\" นะครับ 🙏✨"
@@ -139,8 +139,9 @@ def search_api():
 def verify():
     if request.args.get("hub.verify_token") == VERIFY_TOKEN:
         return request.args.get("hub.challenge"), 200
-    return "🟢 Siamganesh Online Backend (New Message Pattern) is Live", 200
+    return "🟢 Siamganesh Online Backend is Live", 200
 
+# --- 🔌 6. WEBHOOK (อัปเดตแก้ปัญหาแอดมินพิมพ์แล้วบอทเงียบ) ---
 @app.route('/', methods=['POST'])
 def webhook():
     data = request.json
@@ -149,9 +150,28 @@ def webhook():
             p_id = entry.get('id')
             if 'messaging' in entry:
                 for ev in entry['messaging']:
-                    if 'message' in ev and not ev['message'].get('is_echo'):
-                        if ev['message'].get('metadata') == "BOT_SENT_THIS": continue
-                        process_message(ev['sender']['id'], ev['message'].get('text', ''), p_id)
+                    if 'message' in ev:
+                        # 1. กันบอทคุยกับตัวเอง
+                        if ev['message'].get('metadata') == "BOT_SENT_THIS": 
+                            continue
+                        
+                        # 2. ป้องกันข้อความเก่าค้างท่อเกิน 5 นาที
+                        message_timestamp = ev.get('timestamp')
+                        if message_timestamp:
+                            time_diff = (int(time.time() * 1000) - message_timestamp) / 1000
+                            if time_diff > 300: 
+                                continue
+                                
+                        text = ev['message'].get('text', '')
+                        is_echo = ev['message'].get('is_echo', False)
+                        
+                        # 3. กำหนดเป้าหมาย (ส่งให้ใคร?)
+                        # ถ้าแอดมินพิมพ์ (is_echo) -> ส่งรูปให้ลูกค้า (recipient)
+                        # ถ้าลูกค้าพิมพ์ -> ส่งรูปให้ลูกค้า (sender)
+                        target_id = ev.get('recipient', {}).get('id') if is_echo else ev.get('sender', {}).get('id')
+                        
+                        if target_id and text:
+                            process_message(target_id, text, p_id)
     return "ok", 200
 
 if __name__ == '__main__':
