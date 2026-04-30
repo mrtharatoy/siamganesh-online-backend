@@ -77,8 +77,8 @@ def process_message(target_id, text, page_id):
     page_name = "mahabucha" if str(page_id) == str(MAHABUCHA_PAGE_ID) else "muteteam" if str(page_id) == str(MUTETEAM_PAGE_ID) else None
     if not page_name: return
 
-    # ✨ NEW REGEX PATTERN (10 characters)
-    pattern_regex = r'\d{3}[a-z]{2}(?:0[1-9]|1[0-9]|20)\d{3}'
+    # ✨ NEW REGEX PATTERN (ล็อค 269 หรือ 999 ให้ตรงกับหน้าบ้าน)
+    pattern_regex = r'(?:269|999)[a-z]{2}(?:0[1-9]|1[0-9]|20)\d{3}'
     
     text_cleaned = text.lower().replace(" ", "")
     valid_codes = re.findall(pattern_regex, text_cleaned)
@@ -101,10 +101,10 @@ def process_message(target_id, text, page_id):
         else:
             unknown_codes.append(code)
 
-    # ส่งคำนำ
+    # ส่งคำนำ (อัปเดตข้อความใหม่)
     if found_imgs:
         page_display_name = "มหาบูชา" if page_name == "mahabucha" else "มูเตทีม"
-        intro = f"📸 ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่ายครับ\n\nร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"{page_display_name}\" นะครับ 🙏✨"
+        intro = f"📸 ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่าย ที่ใช้ในงานพิธีในครั้งนี้ครับ\n\nร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"{page_display_name}\" นะครับ 🙏✨"
         
         send_fb_action(target_id, page_id, "text", intro)
         
@@ -141,7 +141,7 @@ def verify():
         return request.args.get("hub.challenge"), 200
     return "🟢 Siamganesh Online Backend is Live", 200
 
-# --- 🔌 6. WEBHOOK (อัปเดตแก้ปัญหาแอดมินพิมพ์แล้วบอทเงียบ) ---
+# --- 🔌 6. WEBHOOK ---
 @app.route('/', methods=['POST'])
 def webhook():
     data = request.json
