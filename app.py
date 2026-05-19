@@ -265,6 +265,78 @@ def reload_cache():
     threading.Thread(target=update_file_list, daemon=True).start()
     return jsonify({"message": "กำลัง reload cache..."}), 200
 
+
+# --- 📤 8. UPLOAD IMAGE API ---
+@app.route('/api/upload-image', methods=['POST'])
+def upload_image():
+    import base64
+
+    if not GITHUB_TOKEN:
+        return jsonify({"success": False, "message": "ไม่มี GITHUB_TOKEN"}), 500
+
+    body = request.get_json(silent=True)
+    if not body:
+        return jsonify({"success": False, "message": "ไม่มีข้อมูล"}), 400
+
+    booking_code = body.get("booking_code", "").strip()
+    images       = body.get("images", [])
+
+    if not booking_code or not images:
+        return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
+
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept":        "application/vnd.github.v3+json",
+        "User-Agent":    "Siamganesh-Bot",
+    }
+
+    uploaded = []
+    errors   = []
+
+    for img in images:
+        index    = img.get("index", 1)
+        ext      = img.get("ext", "webp").lstrip(".")
+        data_b64 = img.get("data", "")
+
+        if not data_b64:
+            continue
+
+        filename  = f"{booking_code}_{index}.{ext}"
+        file_path = f"images/muteteam/{filename}"
+        api_url   = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}"
+
+        sha = None
+        check = requests.get(api_url, headers=headers, timeout=10)
+        if check.status_code == 200:
+            sha = check.json().get("sha")
+
+        payload = {
+            "message": f"Upload photo: {filename}",
+            "content": data_b64,
+            "branch":  BRANCH,
+        }
+        if sha:
+            payload["sha"] = sha
+
+        r = requests.put(api_url, headers=headers, json=payload, timeout=30)
+        if r.status_code in (200, 201):
+            uploaded.append(filename)
+            print(f"OK Uploaded: {filename}")
+        else:
+            err = r.json().get("message", "unknown error")
+            errors.append(f"{filename}: {err}")
+            print(f"FAIL {filename}: {err}")
+
+    if uploaded:
+        threading.Thread(target=update_file_list, daemon=True).start()
+
+    return jsonify({
+        "success": len(uploaded) > 0,
+        "uploaded": uploaded,
+        "errors":   errors,
+        "message":  f"อัปโหลดสำเร็จ {len(uploaded)}/{len(images)} รูป",
+    }), 200 if uploaded else 500
+
 if __name__ == '__main__':
     update_file_list()
     app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
