@@ -77,19 +77,25 @@ def process_message(target_id, text, page_id):
     page_name = "mahabucha" if str(page_id) == str(MAHABUCHA_PAGE_ID) else "muteteam" if str(page_id) == str(MUTETEAM_PAGE_ID) else None
     if not page_name: return
 
-    # ✨ REGEX PATTERN (ล็อค 269 หรือ 999 ตัวเลข 3 หลักแรกตามมาตรฐานล่าสุด)
-    pattern_regex = r'(?:269|999)[a-z]{2}(?:0[1-9]|1[0-9]|20)\d{3}'
+    # ✨ ตัวกรองขั้นสุดยอด: ตัดอักขระพิเศษ อีโมจิ ช่องว่าง ทิ้งให้หมด เหลือแค่ตัวอักษรและตัวเลข
+    text_cleaned = re.sub(r'[^a-zA-Z0-9]', '', text).lower()
     
-    text_cleaned = text.lower().replace(" ", "")
+    # ✨ REGEX PATTERN (ล็อค 269 หรือ 999 ตัวเลข 3 หลักแรก)
+    pattern_regex = r'(?:269|999)[a-z]{2}(?:0[1-9]|1[0-9]|20)\d{3}'
     valid_codes = re.findall(pattern_regex, text_cleaned)
 
-    # นินจาโหมด: ถ้าไม่เจอรหัสตามแพทเทิร์นเลย ให้หยุดการทำงานทันทีเพื่อไม่รบกวนการคุยปกติ
+    # นินจาโหมด: ถ้าไม่เจอรหัสตามแพทเทิร์นเลย ให้หยุดการทำงานทันที
     if not valid_codes:
         return
 
     if not FILES_LOADED:
         with lock:
             if not FILES_LOADED: update_file_list()
+
+    # ✨ ระบบ Auto-Refresh: ถ้ารหัสถูกแพทเทิร์น แต่หาไฟล์ไม่เจอในความจำเดิม -> วิ่งไปรีเฟรช GitHub ใหม่ 1 รอบ
+    need_refresh = any(code not in CACHED_FILES[page_name] for code in valid_codes)
+    if need_refresh:
+        update_file_list()
 
     current_cache = CACHED_FILES[page_name]
     found_imgs = []
@@ -101,7 +107,7 @@ def process_message(target_id, text, page_id):
         else:
             unknown_codes.append(code)
 
-    # ส่งคำนำ (เวอร์ชันอัปเดตใหม่ล่าสุด)
+    # ส่งคำนำและรูปภาพ
     if found_imgs:
         page_display_name = "มหาบูชา" if page_name == "mahabucha" else "มูเตทีม"
         intro = f"📸 ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่าย ที่ใช้ในงานพิธีในครั้งนี้ครับ\n\nร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"{page_display_name}\" นะครับ 🙏✨"
@@ -139,7 +145,7 @@ def search_api():
 def verify():
     if request.args.get("hub.verify_token") == VERIFY_TOKEN:
         return request.args.get("hub.challenge"), 200
-    return "🟢 Siamganesh Online Backend is Live", 200
+    return "🟢 Siamganesh Online Backend (Auto-Refresh + Clean Text) is Live", 200
 
 # --- 🔌 6. WEBHOOK ---
 @app.route('/', methods=['POST'])
@@ -165,12 +171,10 @@ def webhook():
                         text = ev['message'].get('text', '')
                         is_echo = ev['message'].get('is_echo', False)
                         
-                        # 🕵️‍♂️ พิมพ์ข้อความลง Log ของ Render เพื่อตรวจสอบว่าเปิดระบบการทำงานฝั่งแอดมินถูกต้องหรือไม่
+                        # พิมพ์ Log เพื่อตรวจสอบข้อมูล
                         print(f"💬 [LOG] ข้อความ: '{text}' | แอดมินพิมพ์(Echo): {is_echo}")
                         
-                        # 3. กำหนดเป้าหมายปลายทางที่จะส่งข้อมูลรูปภาพไปหา
-                        # หากแอดมินพิมพ์ตอบลูกค้า (is_echo: True) ปลายทางคือลูกค้าฝั่งผู้รับ (recipient)
-                        # หากลูกค้าทักเข้ามา (is_echo: False) ปลายทางคือลูกค้าฝั่งผู้ส่ง (sender)
+                        # 3. กำหนดเป้าหมายปลายทาง
                         target_id = ev.get('recipient', {}).get('id') if is_echo else ev.get('sender', {}).get('id')
                         
                         if target_id and text:
