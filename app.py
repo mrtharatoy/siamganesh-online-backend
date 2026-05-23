@@ -47,7 +47,14 @@ def update_file_list():
 def get_image_url(page, filename):
     return f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{REPO_NAME}/{BRANCH}/images/{page}/{filename}"
 
-# --- 💬 3. FACEBOOK TOOLS (เพิ่มระบบดักจับ Error จากเฟสบุ๊ค) ---
+# --- 💬 3. FACEBOOK TOOLS ---
+
+# 👉 ฟังก์ชันที่หายไป เอากลับมาแล้วครับ!
+def get_page_token(page_id):
+    if str(page_id) == str(MAHABUCHA_PAGE_ID): return MAHABUCHA_TOKEN
+    if str(page_id) == str(MUTETEAM_PAGE_ID): return MUTETEAM_TOKEN
+    return None
+
 def send_fb_action(recipient_id, page_id, data_type, payload):
     token = get_page_token(page_id)
     if not token: 
@@ -154,7 +161,7 @@ def search_api():
 def verify():
     if request.args.get("hub.verify_token") == VERIFY_TOKEN:
         return request.args.get("hub.challenge"), 200
-    return "🟢 Siamganesh Online Backend (Debug Mode) is Live", 200
+    return "🟢 Siamganesh Online Backend (Debug Mode - Fixed) is Live", 200
 
 # --- 🔌 6. WEBHOOK ---
 @app.route('/', methods=['POST'])
@@ -172,7 +179,6 @@ def webhook():
                         text = ev['message'].get('text', '')
                         is_echo = ev['message'].get('is_echo', False)
                         
-                        # 🕵️‍♂️ เพิ่มการแงะดูว่า Facebook ส่ง ID อะไรมาให้เราบ้าง
                         sender_id = ev.get('sender', {}).get('id')
                         recipient_id = ev.get('recipient', {}).get('id')
                         print(f"🎯 [DEBUG] Sender: {sender_id} | Recipient: {recipient_id} | is_echo: {is_echo}")
