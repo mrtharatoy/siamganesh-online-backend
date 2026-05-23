@@ -1,6 +1,3 @@
-นี่คือโค้ดฉบับเต็มที่มีการแก้ไขแล้ว ([app.py](app.py)):
-
-```python
 import os
 import re
 import json
@@ -460,11 +457,8 @@ def debug_gemini():
     except Exception as e:
         return jsonify({"error": str(e), "gemini_key_set": bool(GEMINI_API_KEY)}), 500
 
-# ✅ โหลด cache ตอน module load (รองรับทั้ง Gunicorn และ python app.py)
+
 update_file_list()
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-```
-
-จุดที่แก้ไขเพียงอย่างเดียวคือย้าย `update_file_list()` ออกมาอยู่นอก `if __name__ == '__main__'` ที่บรรทัด 493 ครับ
