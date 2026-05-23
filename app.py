@@ -89,11 +89,12 @@ def send_fb_action(recipient_id, page_id, data_type, payload):
         print(f"✅ [SEND] {data_type} → {recipient_id}")
     else:
         print(f"⚠️ [SEND FAIL] {r.status_code} {r.text[:200]}")
+        # retry ด้วย HUMAN_AGENT tag (window 7 วัน)
         data["messaging_type"] = "MESSAGE_TAG"
-        data["tag"] = "CONFIRMED_EVENT_UPDATE"
+        data["tag"] = "HUMAN_AGENT"
         r2 = requests.post(url, params=params, json=data)
         if r2.status_code == 200:
-            print(f"✅ [SEND RETRY OK] {data_type} → {recipient_id}")
+            print(f"✅ [SEND RETRY OK] HUMAN_AGENT {data_type} → {recipient_id}")
         else:
             print(f"❌ [SEND RETRY FAIL] {r2.status_code} {r2.text[:200]}")
 
@@ -362,7 +363,6 @@ def reload_cache():
     threading.Thread(target=update_file_list, daemon=True).start()
     return jsonify({"message": "กำลัง reload cache..."}), 200
 
-
 # --- 📤 8. UPLOAD IMAGE API ---
 @app.route('/api/upload-image', methods=['POST'])
 def upload_image():
@@ -434,7 +434,6 @@ def upload_image():
         "message":  f"อัปโหลดสำเร็จ {len(uploaded)}/{len(images)} รูป",
     }), 200 if uploaded else 500
 
-
 # --- 💌 GENERATE THANK YOU MESSAGE API ---
 @app.route('/api/generate-message', methods=['GET'])
 def generate_message_api():
@@ -452,7 +451,6 @@ def generate_message_api():
         "person2_name": p2,
         "message":      msg,
     }), 200
-
 
 # --- 🔧 DEBUG GEMINI ---
 @app.route('/api/debug-gemini', methods=['GET'])
