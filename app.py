@@ -47,29 +47,42 @@ def update_file_list():
 def get_image_url(page, filename):
     return f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{REPO_NAME}/{BRANCH}/images/{page}/{filename}"
 
-# --- 💬 3. FACEBOOK TOOLS ---
-def get_page_token(page_id):
-    if str(page_id) == str(MAHABUCHA_PAGE_ID): return MAHABUCHA_TOKEN
-    if str(page_id) == str(MUTETEAM_PAGE_ID): return MUTETEAM_TOKEN
-    return None
-
+# --- 💬 3. FACEBOOK TOOLS (เพิ่มระบบดักจับ Error จากเฟสบุ๊ค) ---
 def send_fb_action(recipient_id, page_id, data_type, payload):
     token = get_page_token(page_id)
-    if not token: return
+    if not token: 
+        print(f"❌ [ERROR] ไม่พบ Token สำหรับเพจ {page_id}")
+        return
+        
     url = "https://graph.facebook.com/v19.0/me/messages"
     params = {"access_token": token}
     
     if data_type == "text":
         msg = {"text": payload, "metadata": "BOT_SENT_THIS"}
-    else: # image
+    else: 
         msg = {"attachment": {"type": "image", "payload": {"url": payload, "is_reusable": True}}, "metadata": "BOT_SENT_THIS"}
         
     data = {"recipient": {"id": recipient_id}, "message": msg}
-    r = requests.post(url, params=params, json=data)
-    if r.status_code != 200: 
-        data["messaging_type"] = "MESSAGE_TAG"
-        data["tag"] = "CONFIRMED_EVENT_UPDATE"
-        requests.post(url, params=params, json=data)
+    
+    try:
+        r = requests.post(url, params=params, json=data)
+        if r.status_code == 200:
+            print(f"✅ [FB API] ส่ง {data_type} ไปที่ {recipient_id} สำเร็จจริงๆ เฟสบุ๊ครับทราบแล้ว!")
+        else:
+            print(f"⚠️ [FB API ERROR] เฟสบุ๊คปฏิเสธการส่ง! สาเหตุ: {r.text}")
+            print(f"🔄 [RETRY] กำลังลองส่งใหม่ด้วยแท็ก HUMAN_AGENT (ทะลุกฎ 7 วัน)...")
+            
+            data["messaging_type"] = "MESSAGE_TAG"
+            data["tag"] = "HUMAN_AGENT"
+            r2 = requests.post(url, params=params, json=data)
+            
+            if r2.status_code == 200:
+                print(f"✅ [RETRY SUCCESS] ส่งด้วยแท็กพิเศษสำเร็จ!")
+            else:
+                print(f"❌ [RETRY FAILED] แท็กพิเศษก็ยังโดนปฏิเสธ: {r2.text}")
+                
+    except Exception as e:
+        print(f"❌ [SYSTEM ERROR] ระบบเชื่อมต่อ FB API พัง: {e}")
 
 # --- 🧠 4. MESSAGE PROCESSOR ---
 def process_message(target_id, text, page_id):
@@ -77,17 +90,12 @@ def process_message(target_id, text, page_id):
     page_name = "mahabucha" if str(page_id) == str(MAHABUCHA_PAGE_ID) else "muteteam" if str(page_id) == str(MUTETEAM_PAGE_ID) else None
     if not page_name: return
 
-    # ตัดอักขระขยะออกให้หมด
     text_cleaned = re.sub(r'[^a-zA-Z0-9]', '', text).lower()
-    
-    # กฎเหล็ก 269/999 
     pattern_regex = r'(?:269|999)[a-z]{2}(?:0[1-9]|1[0-9]|20)\d{3}'
     valid_codes = re.findall(pattern_regex, text_cleaned)
 
-    # 🛑 เช็คว่าเป็นรหัสไหม ถ้าไม่ใช่ให้พิมพ์ Log แจ้งเตือนแล้วเงียบ
     if not valid_codes:
-        # พิมพ์บอกว่าเงียบเพราะอะไร จะได้จับผิดลูกค้าได้
-        print(f"🥷 [NINJA MODE] เงียบใส่ข้อความ: '{text}' (ล้างแล้วเหลือ: '{text_cleaned}') เพราะไม่ตรงกฎ 10 หลัก")
+        print(f"🥷 [NINJA MODE] เงียบใส่ข้อความ: '{text}' เพราะไม่ตรงกฎ 10 หลัก")
         return
 
     print(f"🔍 [PROCESS] กำลังค้นหารหัส: {valid_codes[0].upper()}")
@@ -96,7 +104,6 @@ def process_message(target_id, text, page_id):
         with lock:
             if not FILES_LOADED: update_file_list()
 
-    # ระบบ Auto-Refresh 
     need_refresh = any(code not in CACHED_FILES[page_name] for code in valid_codes)
     if need_refresh:
         update_file_list()
@@ -111,7 +118,6 @@ def process_message(target_id, text, page_id):
         else:
             unknown_codes.append(code)
 
-    # ส่งรูป
     if found_imgs:
         page_display_name = "มหาบูชา" if page_name == "mahabucha" else "มูเตทีม"
         intro = f"📸 ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่าย ที่ใช้ในงานพิธีในครั้งนี้ครับ\n\nร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"{page_display_name}\" นะครับ 🙏✨"
@@ -120,12 +126,10 @@ def process_message(target_id, text, page_id):
         for code_key, filename in found_imgs:
             send_fb_action(target_id, page_id, "text", f"ภาพถาดถวาย รหัส : {code_key.upper()}")
             send_fb_action(target_id, page_id, "image", get_image_url(page_name, filename))
-            print(f"✅ [SUCCESS] ส่งรูป {code_key.upper()} สำเร็จ!")
 
     if unknown_codes:
         msg = "⚠️ ขออภัยครับ \n \nไม่พบภาพถาดถวายจากรหัสของท่าน \n \nรบกวนรอแอดมินเข้ามาตรวจสอบให้ ซักครู่นะครับ ⏳"
         send_fb_action(target_id, page_id, "text", msg)
-        print(f"❌ [NOT FOUND] หารหัส {unknown_codes[0].upper()} ไม่เจอในระบบ")
 
 # --- 🌐 5. API ---
 @app.route('/api/search', methods=['GET'])
@@ -150,9 +154,9 @@ def search_api():
 def verify():
     if request.args.get("hub.verify_token") == VERIFY_TOKEN:
         return request.args.get("hub.challenge"), 200
-    return "🟢 Siamganesh Online Backend (Threaded Webhook) is Live", 200
+    return "🟢 Siamganesh Online Backend (Debug Mode) is Live", 200
 
-# --- 🔌 6. WEBHOOK (ระบบทำงานเบื้องหลัง) ---
+# --- 🔌 6. WEBHOOK ---
 @app.route('/', methods=['POST'])
 def webhook():
     data = request.json
@@ -162,23 +166,23 @@ def webhook():
             if 'messaging' in entry:
                 for ev in entry['messaging']:
                     if 'message' in ev:
-                        # กันบอทคุยกับตัวเอง
                         if ev['message'].get('metadata') == "BOT_SENT_THIS": 
                             continue
                         
                         text = ev['message'].get('text', '')
                         is_echo = ev['message'].get('is_echo', False)
                         
-                        # 3. กำหนดเป้าหมาย
-                        target_id = ev.get('recipient', {}).get('id') if is_echo else ev.get('sender', {}).get('id')
+                        # 🕵️‍♂️ เพิ่มการแงะดูว่า Facebook ส่ง ID อะไรมาให้เราบ้าง
+                        sender_id = ev.get('sender', {}).get('id')
+                        recipient_id = ev.get('recipient', {}).get('id')
+                        print(f"🎯 [DEBUG] Sender: {sender_id} | Recipient: {recipient_id} | is_echo: {is_echo}")
+                        
+                        target_id = recipient_id if is_echo else sender_id
                         
                         if target_id and text:
-                            print(f"💬 [INCOMING] ข้อความ: '{text}'")
-                            
-                            # ✨ หัวใจสำคัญ: โยนงานให้ Background Thread ทำ เฟสบุ๊คจะได้ไม่ต้องรอ!
+                            print(f"💬 [INCOMING] ข้อความ: '{text}' จะถูกส่งกลับไปที่ ID: {target_id}")
                             threading.Thread(target=process_message, args=(target_id, text, p_id)).start()
                             
-    # รีบส่ง 200 OK กลับไปหาเฟสบุ๊คทันที เพื่อป้องกันการโดนตัดสาย
     return "ok", 200
 
 if __name__ == '__main__':
