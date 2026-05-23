@@ -66,6 +66,7 @@ def get_page_token(page_id):
 def send_fb_action(recipient_id, page_id, data_type, payload):
     token = get_page_token(page_id)
     if not token:
+        print(f"❌ [SEND] ไม่พบ token สำหรับ page_id={page_id}")
         return
     url    = "https://graph.facebook.com/v19.0/me/messages"
     params = {"access_token": token}
@@ -84,10 +85,17 @@ def send_fb_action(recipient_id, page_id, data_type, payload):
     data = {"recipient": {"id": recipient_id}, "message": msg}
     r = requests.post(url, params=params, json=data)
 
-    if r.status_code != 200:
+    if r.status_code == 200:
+        print(f"✅ [SEND] {data_type} → {recipient_id}")
+    else:
+        print(f"⚠️ [SEND FAIL] {r.status_code} {r.text[:200]}")
         data["messaging_type"] = "MESSAGE_TAG"
         data["tag"] = "CONFIRMED_EVENT_UPDATE"
-        requests.post(url, params=params, json=data)
+        r2 = requests.post(url, params=params, json=data)
+        if r2.status_code == 200:
+            print(f"✅ [SEND RETRY OK] {data_type} → {recipient_id}")
+        else:
+            print(f"❌ [SEND RETRY FAIL] {r2.status_code} {r2.text[:200]}")
 
 # --- 🧠 4. MESSAGE PROCESSOR ---
 
@@ -255,10 +263,15 @@ def process_muteteam(target_id, text, page_id):
 
 
 def process_message(target_id, text, page_id):
+    print(f"🧠 [PROCESS] page_id={page_id} | MAHABUCHA={MAHABUCHA_PAGE_ID} | MUTETEAM={MUTETEAM_PAGE_ID}")
     if str(page_id) == str(MAHABUCHA_PAGE_ID):
+        print("🔵 [ROUTE] → mahabucha")
         process_mahabucha(target_id, text, page_id)
     elif str(page_id) == str(MUTETEAM_PAGE_ID):
+        print("🟣 [ROUTE] → muteteam")
         process_muteteam(target_id, text, page_id)
+    else:
+        print(f"❌ [ROUTE] page_id ไม่ตรงกับเพจใดเลย!")
 
 # --- 🌐 5. WEBHOOK ---
 @app.route('/', methods=['GET'])
