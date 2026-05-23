@@ -276,17 +276,33 @@ def webhook():
     for entry in data.get("entry", []):
         page_id = str(entry.get("id", ""))
         for event in entry.get("messaging", []):
-            sender_id = event.get("sender", {}).get("id")
-            msg       = event.get("message", {})
-            text      = msg.get("text", "")
-            metadata  = msg.get("metadata", "")
+            sender_id    = event.get("sender", {}).get("id")
+            recipient_id = event.get("recipient", {}).get("id")
+            msg          = event.get("message", {})
+            text         = msg.get("text", "")
+            metadata     = msg.get("metadata", "")
+            is_echo      = msg.get("is_echo", False)
 
-            if metadata == "BOT_SENT_THIS" or not text or not sender_id:
+            print(f"📩 [WEBHOOK] page={page_id} sender={sender_id} recipient={recipient_id} is_echo={is_echo} text='{text[:30]}'")
+
+            if metadata == "BOT_SENT_THIS":
+                print("⏭️ [SKIP] BOT_SENT_THIS")
+                continue
+            if not text:
+                print("⏭️ [SKIP] no text")
                 continue
 
+            # echo = admin พิมพ์จาก inbox → ส่งกลับหา recipient (customer)
+            target_id = recipient_id if is_echo else sender_id
+
+            if not target_id:
+                print("⏭️ [SKIP] no target_id")
+                continue
+
+            print(f"🚀 [DISPATCH] target={target_id} text='{text}'")
             threading.Thread(
                 target=process_message,
-                args=(sender_id, text, page_id),
+                args=(target_id, text, page_id),
                 daemon=True
             ).start()
 
