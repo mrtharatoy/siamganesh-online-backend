@@ -629,9 +629,11 @@ def notify_photo():
         f"🔔 [คิวถ่ายภาพใหม่]\n"
         f"เพจ: {page_name}\n"
         f"รหัสจอง: {booking_code}\n"
-        f"ลูกค้า: {customer_name}\n"
-        f"จำนวน: {tray_count} องค์เทพ"
+        f"ลูกค้า: {customer_name}"
     )
+    
+    if owner != "mahabucha":
+        text += f"\nจำนวน: {tray_count} องค์เทพ"
 
     success = send_line_notification(owner, text)
     return jsonify({"success": success}), 200
