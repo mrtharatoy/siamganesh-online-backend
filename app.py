@@ -357,6 +357,32 @@ def search_api():
             }), 200
         return jsonify({"found": False, "message": "ไม่พบรูปภาพ"}), 404
 
+# --- 📂 6.5. LIST IMAGES API ---
+@app.route('/api/images', methods=['GET'])
+def list_images_api():
+    global FILES_LOADED
+    page = request.args.get('page', '').lower()
+
+    if page not in ["mahabucha", "muteteam"]:
+        return jsonify({"success": False, "message": "ระบุ page ไม่ถูกต้อง"}), 400
+
+    if not FILES_LOADED:
+        with lock:
+            if not FILES_LOADED:
+                update_file_list()
+
+    current_cache = CACHED_FILES.get(page, {})
+    
+    results = []
+    for key, filename in current_cache.items():
+        code = key.split('_')[0] if '_' in key else key
+        results.append({
+            "code": code.upper(),
+            "filename": filename,
+            "image_url": get_image_url(page, filename)
+        })
+        
+    return jsonify({"success": True, "results": results, "count": len(results)}), 200
 # --- 🔄 7. RELOAD CACHE API ---
 @app.route('/api/reload', methods=['POST'])
 def reload_cache():
