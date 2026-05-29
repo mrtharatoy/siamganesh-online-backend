@@ -524,26 +524,51 @@ def delete_image():
     api_url   = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}?ref={BRANCH}"
 
     check = requests.get(api_url, headers=headers, timeout=10)
-    if check.status_code != 200:
-        return jsonify({"success": False, "message": f"ไม่พบไฟล์ใน Git ({check.status_code})"}), 404
     
-    sha = check.json().get("sha")
-    
-    payload = {
-        "message": f"Delete photo: {filename}",
-        "sha":     sha,
-        "branch":  BRANCH,
-    }
-    
-    # URL for DELETE is the same but without ref parameter in path (pass it in body)
-    delete_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}"
-    r = requests.delete(delete_url, headers=headers, json=payload, timeout=30)
-    if r.status_code in (200, 201):
-        threading.Thread(target=update_file_list, daemon=True).start()
-        return jsonify({"success": True, "message": "ลบไฟล์ออกจาก Server สำเร็จ"}), 200
+    success = False
+    msg = ""
+
+    if check.status_code == 200:
+        sha = check.json().get("sha")
+        payload = {
+            "message": f"Delete photo: {filename}",
+            "sha":     sha,
+            "branch":  BRANCH,
+        }
+        # URL for DELETE is the same but without ref parameter in path (pass it in body)
+        delete_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}"
+        r = requests.delete(delete_url, headers=headers, json=payload, timeout=30)
+        
+        if r.status_code in (200, 201):
+            threading.Thread(target=update_file_list, daemon=True).start()
+            success = True
+            msg = "ลบไฟล์ออกจาก GitHub สำเร็จ"
+        else:
+            err = r.json().get("message", "unknown error")
+            msg = f"ลบไฟล์จาก GitHub ไม่สำเร็จ: {err}"
     else:
-        err = r.json().get("message", "unknown error")
-        return jsonify({"success": False, "message": f"ลบไฟล์ไม่สำเร็จ: {err}"}), 500
+        msg = f"ไม่พบไฟล์ใน GitHub หรือข้ามไป ({check.status_code})"
+
+    # Also delete from Cloudinary
+    if CLOUDINARY_CLOUD_NAME:
+        try:
+            folder_name = f"Siamganesh-{page.capitalize()}"
+            public_id = f"{folder_name}/{filename.split('.')[0]}"
+            res = cloudinary.uploader.destroy(public_id)
+            print(f"🧹 [Cloudinary] Destroyed {public_id}: {res}")
+            if not success:
+                success = True
+                msg = "ลบไฟล์ออกจาก Cloudinary สำเร็จ"
+            else:
+                msg += " และ Cloudinary สำเร็จ"
+        except Exception as e:
+            print(f"❌ [Cloudinary] Error destroying {filename}: {e}")
+            msg += f" (Cloudinary error: {e})"
+
+    if success:
+        return jsonify({"success": True, "message": msg}), 200
+    else:
+        return jsonify({"success": False, "message": msg}), 500
 
 # --- 💌 10. GENERATE THANK YOU MESSAGE API ---
 @app.route('/api/generate-message', methods=['GET'])
