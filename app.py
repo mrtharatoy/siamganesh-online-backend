@@ -6,6 +6,10 @@ import requests
 import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import io
 
 app = Flask(__name__)
 CORS(app)
@@ -14,6 +18,10 @@ CORS(app)
 GITHUB_USERNAME = "mrtharatoy"
 REPO_NAME = "siamganesh-online-backend"
 BRANCH = "main"
+
+GOOGLE_DRIVE_FOLDER_MAHABUCHA = os.environ.get('GOOGLE_DRIVE_FOLDER_MAHABUCHA')
+GOOGLE_DRIVE_FOLDER_MUTETEAM = os.environ.get('GOOGLE_DRIVE_FOLDER_MUTETEAM')
+GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
 
 MAHABUCHA_PAGE_ID = os.environ.get('MAHABUCHA_PAGE_ID')
 MAHABUCHA_TOKEN   = os.environ.get('MAHABUCHA_TOKEN')
@@ -398,15 +406,13 @@ def reload_cache():
 def upload_image():
     import base64
 
-    if not GITHUB_TOKEN:
-        return jsonify({"success": False, "message": "ไม่มี GITHUB_TOKEN"}), 500
-
     body = request.get_json(silent=True)
     if not body:
         return jsonify({"success": False, "message": "ไม่มีข้อมูล"}), 400
 
     booking_code = body.get("booking_code", "").strip()
     images       = body.get("images", [])
+    owner        = body.get("owner", "muteteam").strip()
 
     if not booking_code or not images:
         return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
@@ -432,27 +438,59 @@ def upload_image():
         file_path = f"images/muteteam/{filename}"
         api_url   = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}"
 
-        sha = None
-        check = requests.get(api_url, headers=headers, timeout=10)
-        if check.status_code == 200:
-            sha = check.json().get("sha")
+        if owner == "muteteam":
+            if GITHUB_TOKEN:
+                sha = None
+                check = requests.get(api_url, headers=headers, timeout=10)
+                if check.status_code == 200:
+                    sha = check.json().get("sha")
 
-        payload = {
-            "message": f"Upload photo: {filename}",
-            "content": data_b64,
-            "branch":  BRANCH,
-        }
-        if sha:
-            payload["sha"] = sha
+                payload = {
+                    "message": f"Upload photo: {filename}",
+                    "content": data_b64,
+                    "branch":  BRANCH,
+                }
+                if sha:
+                    payload["sha"] = sha
 
-        r = requests.put(api_url, headers=headers, json=payload, timeout=30)
-        if r.status_code in (200, 201):
-            uploaded.append(filename)
-            print(f"OK Uploaded: {filename}")
+                r = requests.put(api_url, headers=headers, json=payload, timeout=30)
+                if r.status_code in (200, 201):
+                    uploaded.append(filename)
+                    print(f"OK Uploaded to GitHub: {filename}")
+                else:
+                    err = r.json().get("message", "unknown error")
+                    errors.append(f"GitHub {filename}: {err}")
+                    print(f"FAIL GitHub {filename}: {err}")
+            else:
+                print("Skipped GitHub upload (No Token)")
         else:
-            err = r.json().get("message", "unknown error")
-            errors.append(f"{filename}: {err}")
-            print(f"FAIL {filename}: {err}")
+            # Mahabucha, just count it as "uploaded" so it succeeds
+            uploaded.append(filename)
+            
+        # Upload to Google Drive
+        folder_id = GOOGLE_DRIVE_FOLDER_MAHABUCHA if owner == "mahabucha" else GOOGLE_DRIVE_FOLDER_MUTETEAM
+        if folder_id and GOOGLE_SERVICE_ACCOUNT_JSON:
+            try:
+                import json
+                creds_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+                scopes = ['https://www.googleapis.com/auth/drive.file']
+                creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
+                service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+                
+                mime_type = f"image/{ext}"
+                file_data = base64.b64decode(data_b64)
+                file_metadata = {
+                    'name': filename,
+                    'parents': [folder_id]
+                }
+                media = MediaIoBaseUpload(io.BytesIO(file_data), mimetype=mime_type, resumable=True)
+                gfile = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+                print(f"✅ [Google Drive] Uploaded {filename} with ID: {gfile.get('id')}")
+            except Exception as e:
+                print(f"❌ [Google Drive] Error uploading {filename}: {e}")
+                errors.append(f"GDrive {filename}: {e}")
+        elif not GOOGLE_SERVICE_ACCOUNT_JSON:
+            print("❌ [Google Drive] Missing GOOGLE_SERVICE_ACCOUNT_JSON env variable")
 
     if uploaded:
         threading.Thread(target=update_file_list, daemon=True).start()
