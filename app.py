@@ -25,6 +25,10 @@ GEMINI_API_KEY    = os.environ.get('GEMINI_API_KEY')
 SUPABASE_URL      = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY      = os.environ.get('SUPABASE_KEY')
 
+LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_GROUP_ID_MAHABUCHA   = os.environ.get('LINE_GROUP_ID_MAHABUCHA')
+LINE_GROUP_ID_MUTETEAM    = os.environ.get('LINE_GROUP_ID_MUTETEAM')
+
 CACHED_FILES = {"mahabucha": {}, "muteteam": {}}
 FILES_LOADED = False
 lock = threading.Lock()
@@ -556,6 +560,81 @@ def debug_gemini():
         }), 200
     except Exception as e:
         return jsonify({"error": str(e), "gemini_key_set": bool(GEMINI_API_KEY)}), 500
+
+# --- 📲 11. LINE NOTIFICATIONS ---
+def send_line_notification(owner, text):
+    if not LINE_CHANNEL_ACCESS_TOKEN:
+        print("❌ [LINE] Missing LINE_CHANNEL_ACCESS_TOKEN")
+        return False
+        
+    group_id = LINE_GROUP_ID_MAHABUCHA if owner == 'mahabucha' else LINE_GROUP_ID_MUTETEAM
+    if not group_id:
+        print(f"❌ [LINE] Missing Group ID for owner: {owner}")
+        return False
+
+    url = "https://api.line.me/v2/bot/message/push"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
+    }
+    data = {
+        "to": group_id,
+        "messages": [{"type": "text", "text": text}]
+    }
+
+    try:
+        r = requests.post(url, headers=headers, json=data, timeout=10)
+        if r.status_code == 200:
+            print(f"✅ [LINE] Notification sent to {owner} group.")
+            return True
+        else:
+            print(f"❌ [LINE] Failed to send: {r.status_code} {r.text}")
+            return False
+    except Exception as e:
+        print(f"❌ [LINE] Error sending notification: {e}")
+        return False
+
+@app.route('/api/line-webhook', methods=['POST'])
+def line_webhook():
+    try:
+        body = request.get_json()
+        print("\n=== 📩 [LINE Webhook Event] ===")
+        print(json.dumps(body, indent=2, ensure_ascii=False))
+        
+        events = body.get('events', [])
+        for event in events:
+            source = event.get('source', {})
+            if source.get('type') == 'group':
+                group_id = source.get('groupId')
+                print(f"🔔 found Group ID: {group_id}")
+                
+        return "OK", 200
+    except Exception as e:
+        print(f"Error handling LINE webhook: {e}")
+        return "Error", 500
+
+@app.route('/api/notify-photo', methods=['POST'])
+def notify_photo():
+    data = request.json
+    owner = data.get('owner')
+    booking_code = data.get('booking_code')
+    customer_name = data.get('customer_name', 'ไม่ระบุชื่อ')
+    tray_count = data.get('tray_count', 0)
+
+    if not owner or not booking_code:
+        return jsonify({"success": False, "message": "ข้อมูลไม่ครบถ้วน"}), 400
+
+    page_name = "มหาบูชา" if owner == "mahabucha" else "มูเตทีม"
+    text = (
+        f"🔔 [คิวถ่ายภาพใหม่]\n"
+        f"เพจ: {page_name}\n"
+        f"รหัสจอง: {booking_code}\n"
+        f"ลูกค้า: {customer_name}\n"
+        f"จำนวน: {tray_count} องค์เทพ"
+    )
+
+    success = send_line_notification(owner, text)
+    return jsonify({"success": success}), 200
 
 
 update_file_list()
