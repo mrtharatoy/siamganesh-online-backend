@@ -588,6 +588,32 @@ def generate_message_api():
         "message":      msg,
     }), 200
 
+# --- 👤 10.5. GET FACEBOOK NAME API ---
+@app.route('/api/get-fb-name', methods=['GET'])
+def get_fb_name():
+    psid = request.args.get('psid', '').strip()
+    owner = request.args.get('owner', '').strip().lower()
+
+    if not psid or not owner:
+        return jsonify({"success": False, "message": "Missing psid or owner"}), 400
+
+    page_id = MAHABUCHA_PAGE_ID if owner == 'mahabucha' else MUTETEAM_PAGE_ID
+    token = get_page_token(page_id)
+
+    if not token:
+        return jsonify({"success": False, "message": "No token available for this owner"}), 500
+
+    url = f"https://graph.facebook.com/v19.0/{psid}?fields=name&access_token={token}"
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            return jsonify({"success": True, "name": data.get("name", "")}), 200
+        else:
+            return jsonify({"success": False, "message": r.text}), 400
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
 # --- 🔧 DEBUG GEMINI ---
 @app.route('/api/debug-gemini', methods=['GET'])
 def debug_gemini():
