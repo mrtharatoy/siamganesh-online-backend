@@ -614,6 +614,19 @@ def get_fb_name():
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
+@app.route('/api/debug-fb-conv', methods=['GET'])
+def debug_fb_conv():
+    user_id = request.args.get('user_id')
+    owner = request.args.get('owner', 'muteteam').strip().lower()
+    page_id = MAHABUCHA_PAGE_ID if owner == 'mahabucha' else MUTETEAM_PAGE_ID
+    token = get_page_token(page_id)
+    url = f"https://graph.facebook.com/v19.0/{page_id}/conversations?user_id={user_id}&fields=participants&access_token={token}"
+    try:
+        r = requests.get(url)
+        return jsonify({"success": r.status_code == 200, "data": r.json()}), r.status_code
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
 # --- 🔧 DEBUG GEMINI ---
 @app.route('/api/debug-gemini', methods=['GET'])
 def debug_gemini():
