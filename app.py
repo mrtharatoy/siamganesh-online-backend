@@ -612,14 +612,14 @@ def get_fb_name():
         else:
             # Fallback to public Facebook URL
             try:
-                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-                fb_url = f"https://www.facebook.com/{psid}"
+                headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'}
+                fb_url = f"https://m.facebook.com/{psid}"
                 fb_r = requests.get(fb_url, headers=headers, timeout=10, allow_redirects=True)
                 soup = BeautifulSoup(fb_r.text, 'html.parser')
                 title_tag = soup.find('title')
                 if title_tag and title_tag.text:
                     title = title_tag.text.replace(" | Facebook", "").replace(" - Facebook", "").strip()
-                    if title and title.lower() != "facebook" and title.lower() != "log in to facebook":
+                    if title and title.lower() not in ["facebook", "log in to facebook", "error"]:
                         return jsonify({"success": True, "name": title}), 200
                     else:
                         return jsonify({"success": False, "message": f"Fallback failed: Title was '{title}'"}), 400
