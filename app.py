@@ -621,9 +621,12 @@ def get_fb_name():
                     title = title_tag.text.replace(" | Facebook", "").replace(" - Facebook", "").strip()
                     if title and title.lower() != "facebook" and title.lower() != "log in to facebook":
                         return jsonify({"success": True, "name": title}), 200
+                    else:
+                        return jsonify({"success": False, "message": f"Fallback failed: Title was '{title}'"}), 400
+                else:
+                    return jsonify({"success": False, "message": f"Fallback failed: No title found. Status: {fb_r.status_code}"}), 400
             except Exception as fb_e:
-                pass
-            return jsonify({"success": False, "message": r.text}), 400
+                return jsonify({"success": False, "message": f"Fallback error: {str(fb_e)}"}), 400
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
