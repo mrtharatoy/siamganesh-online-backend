@@ -588,60 +588,6 @@ def generate_message_api():
         "message":      msg,
     }), 200
 
-# --- 👤 10.5. GET FACEBOOK NAME API ---
-@app.route('/api/get-fb-name', methods=['GET'])
-def get_fb_name():
-    psid = request.args.get('psid', '').strip()
-    owner = request.args.get('owner', '').strip().lower()
-
-    if not psid or not owner:
-        return jsonify({"success": False, "message": "Missing psid or owner"}), 400
-
-    page_id = MAHABUCHA_PAGE_ID if owner == 'mahabucha' else MUTETEAM_PAGE_ID
-    token = get_page_token(page_id)
-
-    if not token:
-        return jsonify({"success": False, "message": "No token available for this owner"}), 500
-
-    url = f"https://graph.facebook.com/v19.0/{psid}?fields=name&access_token={token}"
-    try:
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            return jsonify({"success": True, "name": data.get("name", "")}), 200
-        else:
-            # Fallback to public Facebook URL
-            try:
-                headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'}
-                fb_url = f"https://m.facebook.com/{psid}"
-                fb_r = requests.get(fb_url, headers=headers, timeout=10, allow_redirects=True)
-                soup = BeautifulSoup(fb_r.text, 'html.parser')
-                title_tag = soup.find('title')
-                if title_tag and title_tag.text:
-                    title = title_tag.text.replace(" | Facebook", "").replace(" - Facebook", "").strip()
-                    if title and title.lower() not in ["facebook", "log in to facebook", "log into facebook", "error"]:
-                        return jsonify({"success": True, "name": title}), 200
-                    else:
-                        return jsonify({"success": False, "message": f"Fallback failed: Title was '{title}'"}), 400
-                else:
-                    return jsonify({"success": False, "message": f"Fallback failed: No title found. Status: {fb_r.status_code}"}), 400
-            except Exception as fb_e:
-                return jsonify({"success": False, "message": f"Fallback error: {str(fb_e)}"}), 400
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-@app.route('/api/debug-fb-conv', methods=['GET'])
-def debug_fb_conv():
-    user_id = request.args.get('user_id')
-    owner = request.args.get('owner', 'muteteam').strip().lower()
-    page_id = MAHABUCHA_PAGE_ID if owner == 'mahabucha' else MUTETEAM_PAGE_ID
-    token = get_page_token(page_id)
-    url = f"https://graph.facebook.com/v19.0/{page_id}/conversations?user_id={user_id}&fields=participants&access_token={token}"
-    try:
-        r = requests.get(url)
-        return jsonify({"success": r.status_code == 200, "data": r.json()}), r.status_code
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
 
 # --- 🔧 DEBUG GEMINI ---
 @app.route('/api/debug-gemini', methods=['GET'])
