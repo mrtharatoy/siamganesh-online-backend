@@ -610,6 +610,19 @@ def get_fb_name():
             data = r.json()
             return jsonify({"success": True, "name": data.get("name", "")}), 200
         else:
+            # Fallback to public Facebook URL
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                fb_url = f"https://www.facebook.com/{psid}"
+                fb_r = requests.get(fb_url, headers=headers, timeout=10, allow_redirects=True)
+                soup = BeautifulSoup(fb_r.text, 'html.parser')
+                title_tag = soup.find('title')
+                if title_tag and title_tag.text:
+                    title = title_tag.text.replace(" | Facebook", "").replace(" - Facebook", "").strip()
+                    if title and title.lower() != "facebook" and title.lower() != "log in to facebook":
+                        return jsonify({"success": True, "name": title}), 200
+            except Exception as fb_e:
+                pass
             return jsonify({"success": False, "message": r.text}), 400
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
