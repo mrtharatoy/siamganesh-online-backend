@@ -619,7 +619,7 @@ def get_fb_name():
                 title_tag = soup.find('title')
                 if title_tag and title_tag.text:
                     title = title_tag.text.replace(" | Facebook", "").replace(" - Facebook", "").strip()
-                    if title and title.lower() not in ["facebook", "log in to facebook", "error"]:
+                    if title and title.lower() not in ["facebook", "log in to facebook", "log into facebook", "error"]:
                         return jsonify({"success": True, "name": title}), 200
                     else:
                         return jsonify({"success": False, "message": f"Fallback failed: Title was '{title}'"}), 400
