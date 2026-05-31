@@ -116,7 +116,13 @@ def send_fb_action(recipient_id, page_id, data_type, payload):
         if r2.status_code == 200:
             print(f"✅ [SEND RETRY OK] HUMAN_AGENT {data_type} → {recipient_id}")
         else:
-            print(f"❌ [SEND RETRY FAIL] {r2.status_code} {r2.text[:200]}")
+            print(f"⚠️ [SEND RETRY FAIL] HUMAN_AGENT {r2.status_code}. Retrying with POST_PURCHASE_UPDATE...")
+            data["tag"] = "POST_PURCHASE_UPDATE"
+            r3 = requests.post(url, params=params, json=data)
+            if r3.status_code == 200:
+                print(f"✅ [SEND RETRY 2 OK] POST_PURCHASE_UPDATE {data_type} → {recipient_id}")
+            else:
+                print(f"❌ [SEND RETRY 2 FAIL] {r3.status_code} {r3.text[:200]}")
 
 # --- 🧠 4. MESSAGE PROCESSOR ---
 
@@ -688,6 +694,29 @@ def notify_photo():
 
     success = send_line_notification(owner, text)
     return jsonify({"success": success}), 200
+
+@app.route('/api/send-fb-message-manual', methods=['POST'])
+def send_fb_message_manual():
+    data = request.json
+    owner = data.get('owner')
+    psid = data.get('psid')
+    message = data.get('message')
+    images = data.get('images', [])
+
+    if not owner or not psid:
+        return jsonify({"success": False, "error": "Missing owner or psid"}), 400
+
+    page_id = MAHABUCHA_PAGE_ID if owner == "mahabucha" else MUTETEAM_PAGE_ID
+    
+    # 1. Send Text
+    if message:
+        send_fb_action(psid, page_id, "text", message)
+        
+    # 2. Send Images
+    for img_url in images:
+        send_fb_action(psid, page_id, "image", img_url)
+        
+    return jsonify({"success": True}), 200
 
 
 update_file_list()
