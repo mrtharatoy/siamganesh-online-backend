@@ -657,17 +657,8 @@ def send_line_notification(owner, text):
 @app.route('/api/line-webhook', methods=['POST'])
 def line_webhook():
     try:
+        # รับข้อมูลมาเฉยๆ ไม่ต้องปริ้น log แล้ว ป้องกัน log เต็ม
         body = request.get_json()
-        print("\n=== 📩 [LINE Webhook Event] ===")
-        print(json.dumps(body, indent=2, ensure_ascii=False))
-        
-        events = body.get('events', [])
-        for event in events:
-            source = event.get('source', {})
-            if source.get('type') == 'group':
-                group_id = source.get('groupId')
-                print(f"🔔 found Group ID: {group_id}")
-                
         return "OK", 200
     except Exception as e:
         print(f"Error handling LINE webhook: {e}")
