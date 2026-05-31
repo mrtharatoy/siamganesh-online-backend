@@ -675,7 +675,16 @@ def notify_photo():
     data = request.json
     owner = data.get('owner')
     booking_code = data.get('booking_code')
-    customer_name = data.get('customer_name', 'ไม่ระบุชื่อ')
+    
+    person1_name = data.get('person1_name')
+    person2_name = data.get('person2_name')
+    customer_name = data.get('customer_name')
+    
+    if person1_name and person2_name:
+        display_name = f"{person1_name} และ {person2_name}"
+    else:
+        display_name = person1_name or customer_name or 'ไม่ระบุชื่อ'
+        
     tray_count = data.get('tray_count', 0)
 
     if not owner or not booking_code:
@@ -683,10 +692,10 @@ def notify_photo():
 
     page_name = "มหาบูชา" if owner == "mahabucha" else "มูเตทีม"
     text = (
-        f"🔔 [คิวถ่ายภาพใหม่]\n"
+        f"🔔 [คิวปริ้นใหม่]\n"
         f"เพจ: {page_name}\n"
         f"รหัสจอง: {booking_code}\n"
-        f"ลูกค้า: {customer_name}"
+        f"ลูกค้า: {display_name}"
     )
     
     if owner != "mahabucha":
