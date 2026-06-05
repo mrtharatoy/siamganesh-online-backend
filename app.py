@@ -249,9 +249,61 @@ def process_mahabucha(target_id, text, page_id):
         send_fb_action(target_id, page_id, "text", msg)
 
 
+def check_and_send_catalog_codes(target_id, text, page_id):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return
+    
+    # 1. Fetch Setting
+    try:
+        base = SUPABASE_URL.rstrip("/")
+        url_settings = f"{base}/settings" if base.endswith("/rest/v1") else f"{base}/rest/v1/settings"
+            
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}"
+        }
+        r = requests.get(f"{url_settings}?key=eq.auto_reply_catalog&select=value", headers=headers, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            if data and len(data) > 0:
+                setting_val = data[0].get("value", {})
+                if not setting_val.get("muteteam", False):
+                    return # Feature is disabled
+            else:
+                return # Setting not found
+    except Exception as e:
+        print(f"Error fetching setting: {e}")
+        return
+
+    # 2. Extract potential codes
+    words = re.findall(r'\b([A-Z0-9]+)\b', text.upper())
+    if not words:
+        return
+        
+    unique_words = list(set(words))
+    
+    # 3. Fetch matching catalogs
+    try:
+        in_query = ",".join(unique_words)
+        url_catalogs = f"{base}/catalogs" if base.endswith("/rest/v1") else f"{base}/rest/v1/catalogs"
+        cat_url = f"{url_catalogs}?deity_code=in.({in_query})&select=deity_code,image_url"
+        r = requests.get(cat_url, headers=headers, timeout=5)
+        if r.status_code == 200:
+            catalogs = r.json()
+            for cat in catalogs:
+                img_url = cat.get("image_url")
+                if img_url:
+                    send_fb_action(target_id, page_id, "image", img_url)
+    except Exception as e:
+        print(f"Error fetching catalogs: {e}")
+
+
 def process_muteteam(target_id, text, page_id):
     pattern_regex = r'\b(\d{12})\b'
     valid_codes   = re.findall(pattern_regex, text.replace(" ", ""))
+
+    # Check for catalog codes and send images if found
+    check_and_send_catalog_codes(target_id, text, page_id)
 
     if not valid_codes:
         return
