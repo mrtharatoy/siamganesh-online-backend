@@ -835,6 +835,8 @@ def system_status():
         "auto_catalog": getattr(app, 'last_auto_catalog_time', None),
     }
 
+    total_images = len(CACHED_FILES.get("mahabucha", {})) + len(CACHED_FILES.get("muteteam", {}))
+
     return jsonify({
         "server": {
             "cpu_percent": cpu_percent,
@@ -847,7 +849,8 @@ def system_status():
         "database": {
             "status": db_status,
             "latency_ms": db_latency,
-            "total_bookings": total_bookings
+            "total_bookings": total_bookings,
+            "total_images": total_images
         },
         "apis": apis,
         "jobs": jobs
