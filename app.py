@@ -792,6 +792,26 @@ def check_trending_news():
         print("❌ [NEWS] GEMINI_API_KEY missing")
         return
 
+    # Check database settings to see if it's disabled
+    if SUPABASE_URL and SUPABASE_KEY:
+        base = SUPABASE_URL.rstrip("/")
+        url_settings = f"{base}/settings" if base.endswith("/rest/v1") else f"{base}/rest/v1/settings"
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}"
+        }
+        try:
+            r_set = requests.get(f"{url_settings}?key=eq.trending_news_notify&select=value", headers=headers, timeout=5)
+            if r_set.status_code == 200:
+                data_set = r_set.json()
+                if len(data_set) > 0:
+                    val = data_set[0].get("value", {})
+                    if val.get("enabled") is False:
+                        print("ℹ️ [NEWS] Trending news notification is disabled in settings.")
+                        return
+        except Exception as e:
+            print(f"⚠️ [NEWS] Failed to fetch settings: {e}")
+
     try:
         feed = feedparser.parse("https://news.google.com/rss/headlines/section/geo/TH?hl=th&gl=TH&ceid=TH:th")
         entries = feed.entries[:15]
