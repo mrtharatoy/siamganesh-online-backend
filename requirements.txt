@@ -5,3 +5,4 @@ flask-cors
 cloudinary
 apscheduler
 beautifulsoup4
+feedparser

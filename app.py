@@ -4,6 +4,7 @@ import json
 import threading
 import requests
 import time
+import feedparser
 from apscheduler.schedulers.background import BackgroundScheduler
 from bs4 import BeautifulSoup
 import cloudinary
@@ -781,6 +782,86 @@ def send_fb_message_manual():
 
 
 update_file_list()
+
+# --- 📰 12. TRENDING NEWS SCHEDULER ---
+notified_news_links = set()
+
+def check_trending_news():
+    global notified_news_links
+    if not GEMINI_API_KEY:
+        print("❌ [NEWS] GEMINI_API_KEY missing")
+        return
+
+    try:
+        feed = feedparser.parse("https://news.google.com/rss/headlines/section/geo/TH?hl=th&gl=TH&ceid=TH:th")
+        entries = feed.entries[:15]
+        
+        # Filter out already notified
+        new_entries = [e for e in entries if getattr(e, 'link', '') not in notified_news_links]
+        if not new_entries:
+            return
+
+        headlines_text = "\n".join([f"- {e.title} (URL: {e.link})" for e in new_entries])
+        
+        prompt = f"""
+วิเคราะห์หัวข้อข่าวต่อไปนี้ ว่ามีเหตุการณ์สำคัญระดับประเทศที่เป็นกระแสและสะเทือนใจ (เช่น น้ำท่วมหนัก, ไฟไหม้ใหญ่, อุบัติเหตุรุนแรง, ตึกถล่ม, ภัยพิบัติ) ที่เหมาะสมกับการนำไปโพสต์ในเพจสายมูเตลูเพื่อส่งกำลังใจและชวนคนมาสวดมนต์ขอพรหรือไม่
+
+หัวข้อข่าว:
+{headlines_text}
+
+ตอบกลับเป็น JSON Format เท่านั้น โดยมีโครงสร้างดังนี้:
+{{
+  "found": true หรือ false,
+  "title": "หัวข้อข่าวที่เลือก",
+  "link": "ลิงก์ข่าวที่เลือก (ดึงมาจาก URL ใน input)",
+  "reason": "ทำไมถึงเลือกข่าวนี้"
+}}
+ถ้าไม่มีข่าวที่เหมาะสมเลย ให้ตอบ {{"found": false}}
+"""
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"response_mime_type": "application/json"}
+        }
+        r = requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=30)
+        r.raise_for_status()
+        
+        data = r.json()
+        try:
+            content_text = data['candidates'][0]['content']['parts'][0]['text']
+            result = json.loads(content_text)
+        except Exception as e:
+            print(f"❌ [NEWS] Failed to parse Gemini response: {e}")
+            return
+
+        if result.get("found"):
+            title = result.get("title")
+            link = result.get("link")
+            
+            msg = (
+                f"🚨 [แจ้งเตือนกระแสสังคม]\n"
+                f"พบข่าวที่น่าสนใจ ทำคอนเทนต์เพจ!\n\n"
+                f"📌 ข่าว: {title}\n"
+                f"🔗 แหล่งที่มา: {link}\n\n"
+                f"💡 แนะนำให้แอดมินนำไปปรับใช้โพสต์หน้าเพจ ส่งกำลังใจได้เลยครับ"
+            )
+            
+            # Send to both groups
+            send_line_notification('muteteam', msg)
+            send_line_notification('mahabucha', msg)
+            
+            # Mark as notified
+            notified_news_links.add(link)
+            print(f"✅ [NEWS] Sent notification for: {title}")
+
+    except Exception as e:
+        print(f"❌ [NEWS] Error checking trending news: {e}")
+
+# Start the background scheduler
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=check_trending_news, trigger="interval", hours=1)
+scheduler.start()
+
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
