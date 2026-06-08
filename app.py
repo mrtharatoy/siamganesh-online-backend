@@ -51,12 +51,13 @@ LINE_GROUP_ID_MAHABUCHA   = os.environ.get('LINE_GROUP_ID_MAHABUCHA')
 LINE_GROUP_ID_MUTETEAM    = os.environ.get('LINE_GROUP_ID_MUTETEAM')
 
 CACHED_FILES = {"mahabucha": {}, "muteteam": {}}
+TOTAL_IMAGES_SIZE = {"mahabucha": 0, "muteteam": 0}
 FILES_LOADED = False
 lock = threading.Lock()
 
 # --- 📂 2. GITHUB FILES ---
 def update_file_list():
-    global CACHED_FILES, FILES_LOADED
+    global CACHED_FILES, TOTAL_IMAGES_SIZE, FILES_LOADED
     print("🔄 Updating image list from GitHub...")
     headers = {"User-Agent": "Siamganesh-Bot", "Accept": "application/vnd.github.v3+json"}
     if GITHUB_TOKEN:
@@ -69,12 +70,15 @@ def update_file_list():
             if r.status_code == 200:
                 files = r.json()
                 temp_cache = {}
+                total_size = 0
                 for item in files:
                     if item['type'] == 'file' and item['name'] != '.keep':
                         name_no_ext = item['name'].rsplit('.', 1)[0].strip().lower()
                         temp_cache[name_no_ext] = item['name']
+                        total_size += item.get('size', 0)
                 CACHED_FILES[page] = temp_cache
-                print(f"✅ {page.upper()} loaded: {len(temp_cache)} images.")
+                TOTAL_IMAGES_SIZE[page] = total_size
+                print(f"✅ {page.upper()} loaded: {len(temp_cache)} images, Size: {total_size} bytes.")
         except Exception as e:
             print(f"❌ Error {page}: {e}")
     FILES_LOADED = True
@@ -836,6 +840,7 @@ def system_status():
     }
 
     total_images = len(CACHED_FILES.get("mahabucha", {})) + len(CACHED_FILES.get("muteteam", {}))
+    total_images_size_mb = (TOTAL_IMAGES_SIZE.get("mahabucha", 0) + TOTAL_IMAGES_SIZE.get("muteteam", 0)) / (1024 * 1024)
 
     return jsonify({
         "server": {
@@ -850,7 +855,8 @@ def system_status():
             "status": db_status,
             "latency_ms": db_latency,
             "total_bookings": total_bookings,
-            "total_images": total_images
+            "total_images": total_images,
+            "total_images_size_mb": round(total_images_size_mb, 2)
         },
         "apis": apis,
         "jobs": jobs
