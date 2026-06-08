@@ -5,6 +5,8 @@ import threading
 import requests
 import time
 import feedparser
+import psutil
+from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from bs4 import BeautifulSoup
 import cloudinary
@@ -14,6 +16,8 @@ from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
+
+SERVER_START_TIME = datetime.now()
 
 # --- ⚙️ 1. CONFIG ---
 GITHUB_USERNAME = os.getenv("GITHUB_USERNAME", "mrtharatoy")
@@ -780,6 +784,75 @@ def send_fb_message_manual():
         
     return jsonify({"success": True}), 200
 
+@app.route('/api/system-status', methods=['GET'])
+def system_status():
+    uptime = datetime.now() - SERVER_START_TIME
+    cpu_percent = psutil.cpu_percent(interval=None)
+    mem = psutil.virtual_memory()
+    disk = psutil.disk_usage('/')
+
+    # DB connection check
+    db_status = "error"
+    db_latency = 0
+    total_bookings = 0
+    if SUPABASE_URL and SUPABASE_KEY:
+        try:
+            start_t = time.time()
+            base = SUPABASE_URL.rstrip("/")
+            url = f"{base}/rest/v1/bookings?select=id&limit=1"
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+            r = requests.get(url, headers=headers, timeout=5)
+            r.raise_for_status()
+            db_latency = int((time.time() - start_t) * 1000)
+            db_status = "ok"
+
+            # Get total count
+            url_count = f"{base}/rest/v1/bookings?select=id"
+            headers_count = headers.copy()
+            headers_count["Prefer"] = "count=exact"
+            headers_count["Range"] = "0-0"
+            r_count = requests.head(url_count, headers=headers_count, timeout=5)
+            content_range = r_count.headers.get("Content-Range", "")
+            if "/" in content_range:
+                total_bookings = int(content_range.split("/")[1])
+        except Exception:
+            pass
+
+    # External APIs check
+    apis = {
+        "gemini": bool(GEMINI_API_KEY),
+        "cloudinary": bool(os.environ.get('CLOUDINARY_API_KEY')),
+        "line_notify": bool(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')),
+        "fb_graph": bool(os.environ.get('FB_PAGE_ACCESS_TOKEN_MUTETEAM'))
+    }
+
+    # Background Jobs info
+    jobs = {
+        "trending_news": getattr(app, 'last_trending_news_time', None),
+        "auto_catalog": getattr(app, 'last_auto_catalog_time', None),
+    }
+
+    return jsonify({
+        "server": {
+            "cpu_percent": cpu_percent,
+            "ram_percent": mem.percent,
+            "ram_used_mb": mem.used // (1024*1024),
+            "ram_total_mb": mem.total // (1024*1024),
+            "disk_percent": disk.percent,
+            "uptime_seconds": uptime.total_seconds()
+        },
+        "database": {
+            "status": db_status,
+            "latency_ms": db_latency,
+            "total_bookings": total_bookings
+        },
+        "apis": apis,
+        "jobs": jobs
+    }), 200
+
 
 update_file_list()
 
@@ -788,6 +861,10 @@ notified_news_links = set()
 
 def check_trending_news():
     global notified_news_links
+    
+    # Record job time
+    app.last_trending_news_time = datetime.now().isoformat()
+    
     if not GEMINI_API_KEY:
         print("❌ [NEWS] GEMINI_API_KEY missing")
         return

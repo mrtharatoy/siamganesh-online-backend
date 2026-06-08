@@ -6,3 +6,4 @@ cloudinary
 apscheduler
 beautifulsoup4
 feedparser
+psutil
