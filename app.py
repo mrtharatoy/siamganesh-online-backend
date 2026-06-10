@@ -1013,7 +1013,7 @@ def check_trending_news():
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"response_mime_type": "application/json"}
+            "generationConfig": {"responseMimeType": "application/json"}
         }
         r = requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=30)
         r.raise_for_status()
