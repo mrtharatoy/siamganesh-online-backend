@@ -261,7 +261,7 @@ def generate_thank_you_message(booking_code, person1_name=None, person2_name=Non
 
 
 def process_mahabucha(target_id, text, page_id):
-    pattern_regex = r'\d+[a-z]{2}(?:0[1-9]|1[0-9]|20)\d{4}'
+    pattern_regex = r'\d+[a-z]{2}\d+'
     text_cleaned  = text.lower().replace(" ", "")
     valid_codes   = re.findall(pattern_regex, text_cleaned)
 
