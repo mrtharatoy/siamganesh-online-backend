@@ -53,6 +53,7 @@ LINE_GROUP_ID_MUTETEAM    = os.environ.get('LINE_GROUP_ID_MUTETEAM')
 CACHED_FILES = {"mahabucha": {}, "muteteam": {}}
 TOTAL_IMAGES_SIZE = {"mahabucha": 0, "muteteam": 0}
 FILES_LOADED = False
+LAST_CACHE_REFRESH = 0
 lock = threading.Lock()
 
 # --- 📂 2. GITHUB FILES ---
@@ -268,12 +269,24 @@ def process_mahabucha(target_id, text, page_id):
     if not valid_codes:
         return
 
+    global LAST_CACHE_REFRESH
     if not FILES_LOADED:
         with lock:
             if not FILES_LOADED:
                 update_file_list()
+                LAST_CACHE_REFRESH = time.time()
 
     current_cache = CACHED_FILES["mahabucha"]
+    
+    missing_codes = [c for c in valid_codes if c not in current_cache]
+    if missing_codes and (time.time() - LAST_CACHE_REFRESH > 10):
+        with lock:
+            if time.time() - LAST_CACHE_REFRESH > 10:
+                print(f"Refreshing cache because codes were not found: {missing_codes}")
+                update_file_list()
+                LAST_CACHE_REFRESH = time.time()
+                current_cache = CACHED_FILES["mahabucha"]
+
     found_imgs    = []
     unknown_codes = []
 
@@ -364,12 +377,29 @@ def process_muteteam(target_id, text, page_id):
     if not valid_codes:
         return
 
+    global LAST_CACHE_REFRESH
     if not FILES_LOADED:
         with lock:
             if not FILES_LOADED:
                 update_file_list()
+                LAST_CACHE_REFRESH = time.time()
 
     current_cache = CACHED_FILES["muteteam"]
+    
+    missing_some = False
+    for booking_code in set(valid_codes):
+        matched = [k for k in current_cache.keys() if k.startswith(booking_code)]
+        if not matched:
+            missing_some = True
+            break
+            
+    if missing_some and (time.time() - LAST_CACHE_REFRESH > 10):
+        with lock:
+            if time.time() - LAST_CACHE_REFRESH > 10:
+                print("Refreshing cache because some Muteteam codes were not found")
+                update_file_list()
+                LAST_CACHE_REFRESH = time.time()
+                current_cache = CACHED_FILES["muteteam"]
 
     for booking_code in set(valid_codes):
         matched_files = [
