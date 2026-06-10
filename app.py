@@ -96,7 +96,7 @@ def send_fb_action(recipient_id, page_id, data_type, payload):
     token = get_page_token(page_id)
     if not token:
         print(f"❌ [SEND] ไม่พบ token สำหรับ page_id={page_id}")
-        return
+        return False, "ไม่พบ token"
     url    = "https://graph.facebook.com/v19.0/me/messages"
     params = {"access_token": token}
 
@@ -116,6 +116,7 @@ def send_fb_action(recipient_id, page_id, data_type, payload):
 
     if r.status_code == 200:
         print(f"✅ [SEND] {data_type} → {recipient_id}")
+        return True, ""
     else:
         print(f"⚠️ [SEND FAIL] {r.status_code} {r.text[:200]}")
         # retry ด้วย HUMAN_AGENT tag (window 7 วัน)
@@ -124,16 +125,55 @@ def send_fb_action(recipient_id, page_id, data_type, payload):
         r2 = requests.post(url, params=params, json=data)
         if r2.status_code == 200:
             print(f"✅ [SEND RETRY OK] HUMAN_AGENT {data_type} → {recipient_id}")
+            return True, ""
         else:
             print(f"⚠️ [SEND RETRY FAIL] HUMAN_AGENT {r2.status_code}. Retrying with POST_PURCHASE_UPDATE...")
             data["tag"] = "POST_PURCHASE_UPDATE"
             r3 = requests.post(url, params=params, json=data)
             if r3.status_code == 200:
                 print(f"✅ [SEND RETRY 2 OK] POST_PURCHASE_UPDATE {data_type} → {recipient_id}")
+                return True, ""
             else:
                 print(f"❌ [SEND RETRY 2 FAIL] {r3.status_code} {r3.text[:200]}")
+                err_msg = r3.json().get("error", {}).get("message", r3.text[:100]) if "error" in r3.text else r3.text[:100]
+                return False, f"FB Error {r3.status_code}: {err_msg}"
 
 # --- 🧠 4. MESSAGE PROCESSOR ---
+
+def get_booking_by_code(booking_code, owner):
+    if not SUPABASE_URL or not SUPABASE_KEY: return None
+    try:
+        base = SUPABASE_URL.rstrip("/")
+        url = f"{base}/bookings" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings"
+        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+        params = {"booking_code": f"eq.{booking_code.upper()}", "owner": f"eq.{owner}", "limit": "1"}
+        r = requests.get(url, headers=headers, params=params, timeout=10)
+        if r.status_code == 200 and r.json():
+            return r.json()[0]
+    except Exception as e:
+        print(f"Supabase error get_booking: {e}")
+    return None
+
+def update_booking_auto_reply_log(booking_id, logs, status_to_set, error_msg=None):
+    if not SUPABASE_URL or not SUPABASE_KEY: return
+    try:
+        base = SUPABASE_URL.rstrip("/")
+        url = f"{base}/bookings?id=eq.{booking_id}" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?id=eq.{booking_id}"
+        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
+        
+        current_logs = logs or []
+        timestamp_str = datetime.utcnow().isoformat() + "Z"
+        
+        if error_msg:
+            new_log = {"action": "auto_reply_error", "error": error_msg, "by": "ระบบอัตโนมัติ", "timestamp": timestamp_str}
+            payload = {"activity_logs": current_logs + [new_log]}
+        else:
+            new_log = {"action": status_to_set, "by": "ระบบอัตโนมัติ", "timestamp": timestamp_str}
+            payload = {"status": status_to_set, "activity_logs": current_logs + [new_log]}
+            
+        requests.patch(url, headers=headers, json=payload, timeout=10)
+    except Exception as e:
+        print(f"Supabase error update log: {e}")
 
 def get_booking_names(booking_code):
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -251,7 +291,14 @@ def process_mahabucha(target_id, text, page_id):
         send_fb_action(target_id, page_id, "text", intro)
         for code_key, filename in found_imgs:
             send_fb_action(target_id, page_id, "text", f"ภาพถาดถวาย รหัส : {code_key.upper()}")
-            send_fb_action(target_id, page_id, "image", get_image_url("mahabucha", filename))
+            success, err_msg = send_fb_action(target_id, page_id, "image", get_image_url("mahabucha", filename))
+            
+            booking = get_booking_by_code(code_key, "mahabucha")
+            if booking:
+                if success:
+                    update_booking_auto_reply_log(booking['id'], booking.get('activity_logs'), "completed")
+                else:
+                    update_booking_auto_reply_log(booking['id'], booking.get('activity_logs'), booking.get('status'), err_msg)
 
     if unknown_codes:
         msg = "⚠️ ขออภัยครับ \n\nไม่พบภาพถาดถวายจากรหัสของท่าน \n\nรบกวนรอแอดมินเข้ามาตรวจสอบให้ซักครู่นะครับ ⏳"
@@ -783,8 +830,17 @@ def send_fb_message_manual():
         send_fb_action(psid, page_id, "text", message)
         
     # 2. Send Images
+    success = True
+    err_msg = ""
     for img_url in images:
-        send_fb_action(psid, page_id, "image", img_url)
+        img_success, img_err = send_fb_action(psid, page_id, "image", img_url)
+        if not img_success:
+            success = False
+            err_msg = img_err
+            break
+        
+    if not success:
+        return jsonify({"success": False, "error": err_msg}), 500
         
     return jsonify({"success": True}), 200
 
