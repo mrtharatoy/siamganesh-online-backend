@@ -288,6 +288,11 @@ def process_mahabucha(target_id, text, page_id):
                 LAST_CACHE_REFRESH = time.time()
                 current_cache = CACHED_FILES["mahabucha"]
 
+    # If the folder is completely empty, do not return any message
+    if not current_cache:
+        print("⏭️ [SKIP] No images in mahabucha folder. Ignoring request.")
+        return
+
     found_imgs    = []
     unknown_codes = []
 
@@ -401,6 +406,11 @@ def process_muteteam(target_id, text, page_id):
                 update_file_list()
                 LAST_CACHE_REFRESH = time.time()
                 current_cache = CACHED_FILES["muteteam"]
+
+    # If the folder is completely empty, do not return any message
+    if not current_cache:
+        print("⏭️ [SKIP] No images in muteteam folder. Ignoring request.")
+        return
 
     for booking_code in set(valid_codes):
         matched_files = [
