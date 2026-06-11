@@ -1068,7 +1068,7 @@ def mahabucha_daily_summary():
             
         print("🕒 [SUMMARY] Running daily event summary check...")
         # 1. Check if daily summary is enabled for mahabucha
-        res = supabase.table("settings").select("value").eq("key", "daily_summary_mahabucha").execute()
+        res = supabase.table("system_settings").select("value").eq("id", "daily_summary_mahabucha").execute()
         if not res.data:
             return
             
@@ -1161,7 +1161,7 @@ def mahabucha_daily_summary():
 # Start the background scheduler
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=check_trending_news, trigger="interval", hours=1)
-scheduler.add_job(func=mahabucha_daily_summary, trigger="cron", hour=21, minute=0)
+scheduler.add_job(func=mahabucha_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.start()
 
 
