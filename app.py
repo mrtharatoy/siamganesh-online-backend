@@ -6,7 +6,8 @@ import requests
 import time
 import feedparser
 import psutil
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+from collections import defaultdict
 from apscheduler.schedulers.background import BackgroundScheduler
 from bs4 import BeautifulSoup
 import cloudinary
@@ -1049,9 +1050,108 @@ def check_trending_news():
     except Exception as e:
         print(f"❌ [NEWS] Error checking trending news: {e}")
 
+# --- 📰 13. DAILY EVENT SUMMARY SCHEDULER ---
+def mahabucha_daily_summary():
+    try:
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            return
+            
+        print("🕒 [SUMMARY] Running daily event summary check...")
+        # 1. Check if daily summary is enabled for mahabucha
+        res = supabase.table("settings").select("value").eq("key", "daily_summary_mahabucha").execute()
+        if not res.data:
+            return
+            
+        setting_val = res.data[0].get("value", {})
+        if not setting_val.get("enabled", False):
+            print("🕒 [SUMMARY] Daily summary for mahabucha is disabled.")
+            return
+            
+        # 2. Get active events for mahabucha
+        tz = timezone(timedelta(hours=7))
+        now = datetime.now(tz)
+        today = now.date()
+        
+        events = supabase.table("galleries").select("id, caption, event_date, created_at").eq("owner", "mahabucha").not_("event_date", "is", "null").execute()
+        
+        for ev in events.data:
+            ev_date_str = ev.get("event_date")
+            if not ev_date_str:
+                continue
+            ev_date = datetime.strptime(ev_date_str, "%Y-%m-%d").date()
+            
+            # Skip if event is already past (yesterday or earlier)
+            if today > ev_date:
+                continue
+                
+            # If the event_date is exactly today, it's the final day (ปิดยอด)
+            is_final = (today == ev_date)
+            
+            # Fetch all bookings for this gallery (any status)
+            bookings = supabase.table("bookings").select("total_price, tray_count, created_at").eq("gallery_id", ev["id"]).execute()
+            
+            # 24-hour cutoff
+            yesterday_2100 = now.replace(hour=21, minute=0, second=0, microsecond=0) - timedelta(days=1)
+            today_2100 = now.replace(hour=21, minute=0, second=0, microsecond=0)
+            
+            total_by_price = defaultdict(int)
+            today_by_price = defaultdict(int)
+            
+            for b in bookings.data:
+                b_created_at_str = b.get("created_at")
+                if not b_created_at_str:
+                    continue
+                    
+                b_created_at = datetime.fromisoformat(b_created_at_str.replace("Z", "+00:00")).astimezone(tz)
+                price = b.get("total_price") or 0
+                count = b.get("tray_count") or 1
+                
+                # We only count bookings created before or exactly at today 21:00
+                if b_created_at <= today_2100:
+                    total_by_price[price] += count
+                    
+                    # If created after yesterday 21:00, it's today's increment
+                    if b_created_at > yesterday_2100:
+                        today_by_price[price] += count
+                        
+            # Format message
+            caption = ev.get("caption", "งานพิธีมหาบูชา")
+            
+            if is_final:
+                msg = f"🔔 สรุปผลปิดยอดงานพิธี: {caption}\n📅 ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+            else:
+                msg = f"🔔 สรุปยอดงานพิธี: {caption}\n📅 ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+                
+            msg += "[ 📈 ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
+            today_total = 0
+            for price in sorted(today_by_price.keys()):
+                c = today_by_price[price]
+                today_total += c
+                msg += f"- แบบ {price}: +{c} ถาด\n"
+            msg += f"รวมเพิ่มวันนี้: +{today_total} ถาด\n\n"
+            
+            msg += "[ 📊 ยอดรวมสะสมทั้งหมด ]\n"
+            overall_total = 0
+            for price in sorted(total_by_price.keys()):
+                c = total_by_price[price]
+                overall_total += c
+                msg += f"- แบบ {price}: {c} ถาด\n"
+            msg += f"✅ รวมสะสมทั้งหมด: {overall_total} ถาด\n\n"
+            
+            if is_final:
+                msg += "🙏 สิ้นสุดการรับจองและปิดยอดสำหรับงานพิธีนี้เรียบร้อยครับ"
+                
+            # Send via Line
+            send_line_notification("mahabucha", msg)
+            print(f"✅ [SUMMARY] Sent daily summary for {caption}")
+            
+    except Exception as e:
+        print(f"❌ [SUMMARY] Error in daily event summary: {e}")
+
 # Start the background scheduler
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=check_trending_news, trigger="interval", hours=1)
+scheduler.add_job(func=mahabucha_daily_summary, trigger="cron", hour=21, minute=0)
 scheduler.start()
 
 
