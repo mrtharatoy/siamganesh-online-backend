@@ -1330,7 +1330,7 @@ def ocr_image():
                 mime_type = prefix.split("data:")[1].split(";base64")[0]
             base64_image = base64_image.split(",")[1]
             
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
         payload = {
             "contents": [
                 {
