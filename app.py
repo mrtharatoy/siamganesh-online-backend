@@ -690,6 +690,73 @@ def upload_image():
         "message":  f"อัปโหลดสำเร็จ {len(uploaded)}/{len(images)} รูป",
     }), 200 if uploaded else 500
 
+# --- 📤 8.5. UPLOAD GITHUB RAW API ---
+@app.route('/api/upload-github-raw', methods=['POST'])
+def upload_github_raw():
+    body = request.get_json(silent=True)
+    if not body:
+        return jsonify({"success": False, "message": "ไม่มีข้อมูล"}), 400
+
+    owner  = body.get("owner", "").strip()
+    images = body.get("images", [])
+
+    if not owner or not images:
+        return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
+
+    if not GITHUB_TOKEN:
+        return jsonify({"success": False, "message": "ไม่มี GITHUB_TOKEN"}), 500
+
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept":        "application/vnd.github.v3+json",
+        "User-Agent":    "Siamganesh-Bot",
+    }
+
+    uploaded = []
+    errors   = []
+
+    for img in images:
+        filename = img.get("filename", "")
+        data_b64 = img.get("data", "")
+
+        if not filename or not data_b64:
+            continue
+
+        file_path = f"images/{owner}/{filename}"
+        api_url   = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}"
+
+        sha = None
+        check = requests.get(api_url, headers=headers, timeout=10)
+        if check.status_code == 200:
+            sha = check.json().get("sha")
+
+        payload = {
+            "message": f"Upload raw photo: {filename}",
+            "content": data_b64,
+            "branch":  BRANCH,
+        }
+        if sha:
+            payload["sha"] = sha
+
+        r = requests.put(api_url, headers=headers, json=payload, timeout=30)
+        if r.status_code in (200, 201):
+            uploaded.append(filename)
+            print(f"OK Uploaded RAW to GitHub: {filename}")
+        else:
+            err = r.json().get("message", "unknown error")
+            errors.append(f"GitHub {filename}: {err}")
+            print(f"FAIL GitHub RAW {filename}: {err}")
+
+    if uploaded:
+        threading.Thread(target=update_file_list, daemon=True).start()
+
+    return jsonify({
+        "success": len(uploaded) > 0,
+        "uploaded": uploaded,
+        "errors":   errors,
+        "message":  f"อัปโหลดสำเร็จ {len(uploaded)}/{len(images)} รูป",
+    }), 200 if uploaded else 500
+
 # --- 🗑️ 9. DELETE IMAGE API ---
 @app.route('/api/delete-image', methods=['POST'])
 def delete_image():
