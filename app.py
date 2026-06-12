@@ -331,13 +331,13 @@ def check_and_send_catalog_codes(target_id, text, page_id):
     # 1. Fetch Setting
     try:
         base = SUPABASE_URL.rstrip("/")
-        url_settings = f"{base}/settings" if base.endswith("/rest/v1") else f"{base}/rest/v1/settings"
+        url_settings = f"{base}/system_settings" if base.endswith("/rest/v1") else f"{base}/rest/v1/system_settings"
             
         headers = {
             "apikey": SUPABASE_KEY,
             "Authorization": f"Bearer {SUPABASE_KEY}"
         }
-        r = requests.get(f"{url_settings}?key=eq.auto_reply_catalog&select=value", headers=headers, timeout=5)
+        r = requests.get(f"{url_settings}?id=eq.auto_reply_catalog&select=value", headers=headers, timeout=5)
         if r.status_code == 200:
             data = r.json()
             if data and len(data) > 0:
