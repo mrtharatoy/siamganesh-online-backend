@@ -978,13 +978,13 @@ def check_trending_news():
     # Check database settings to see if it's disabled
     if SUPABASE_URL and SUPABASE_KEY:
         base = SUPABASE_URL.rstrip("/")
-        url_settings = f"{base}/settings" if base.endswith("/rest/v1") else f"{base}/rest/v1/settings"
+        url_settings = f"{base}/system_settings" if base.endswith("/rest/v1") else f"{base}/rest/v1/system_settings"
         headers = {
             "apikey": SUPABASE_KEY,
             "Authorization": f"Bearer {SUPABASE_KEY}"
         }
         try:
-            r_set = requests.get(f"{url_settings}?key=eq.trending_news_notify&select=value", headers=headers, timeout=5)
+            r_set = requests.get(f"{url_settings}?id=eq.trending_news_notify&select=value", headers=headers, timeout=5)
             if r_set.status_code == 200:
                 data_set = r_set.json()
                 if len(data_set) > 0:
