@@ -1322,8 +1322,12 @@ def ocr_image():
             return jsonify({"error": "No image data provided"}), 400
             
         base64_image = data["image"]
+        mime_type = "image/jpeg"
         # Remove prefix if present (e.g. data:image/png;base64,)
         if "," in base64_image:
+            prefix = base64_image.split(",")[0]
+            if "data:" in prefix and ";base64" in prefix:
+                mime_type = prefix.split("data:")[1].split(";base64")[0]
             base64_image = base64_image.split(",")[1]
             
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
@@ -1332,11 +1336,11 @@ def ocr_image():
                 {
                     "parts": [
                         {
-                            "text": "Perform OCR on this image. Extract ALL text you can see, especially all numbers and English characters. Just return the raw extracted text without any formatting or explanation."
+                            "text": "Find and extract the booking/tracking code from this image. The code ALWAYS matches one of these two formats: 1) Exactly 12 digits (e.g. 123456789012). 2) Numbers followed by 2 uppercase letters followed by numbers (e.g. 12MB010001). Return ONLY the code itself, with no spaces, no punctuation, and no other text. If you absolutely cannot find any code matching these formats, return NOT_FOUND."
                         },
                         {
                             "inline_data": {
-                                "mime_type": "image/jpeg",
+                                "mime_type": mime_type,
                                 "data": base64_image
                             }
                         }
