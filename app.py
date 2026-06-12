@@ -1332,7 +1332,7 @@ def ocr_image():
                 {
                     "parts": [
                         {
-                            "text": "Extract the booking code from this image. The code format is either 12 digits (e.g., 123456789012) or \\d+[A-Za-z]{2}\\d+ (e.g., 12MB010001). Reply ONLY with the exact code. If no code is found, reply with 'NOT_FOUND'."
+                            "text": "Perform OCR on this image. Extract ALL text you can see, especially all numbers and English characters. Just return the raw extracted text without any formatting or explanation."
                         },
                         {
                             "inline_data": {
