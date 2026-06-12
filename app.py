@@ -156,6 +156,25 @@ def get_booking_by_code(booking_code, owner):
         print(f"Supabase error get_booking: {e}")
     return None
 
+def get_system_setting(key, default_val=None):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return default_val
+    try:
+        base = SUPABASE_URL.rstrip("/")
+        url_settings = f"{base}/system_settings" if base.endswith("/rest/v1") else f"{base}/rest/v1/system_settings"
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}"
+        }
+        r = requests.get(f"{url_settings}?id=eq.{key}&select=value", headers=headers, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            if data and len(data) > 0:
+                return data[0].get("value", default_val)
+    except Exception as e:
+        print(f"Error fetching setting {key}: {e}")
+    return default_val
+
 def get_supabase_storage_stats(bucket_name, prefix=""):
     if not SUPABASE_URL or not SUPABASE_KEY:
         return 0, 0
@@ -357,8 +376,12 @@ def process_mahabucha(target_id, text, page_id):
                     update_booking_auto_reply_log(booking['id'], booking.get('activity_logs'), booking.get('status'), err_msg)
 
     if unknown_codes:
-        msg = "⚠️ ขออภัยครับ \n\nไม่พบภาพถาดถวายจากรหัสของท่าน \n\nรบกวนรอแอดมินเข้ามาตรวจสอบให้ซักครู่นะครับ ⏳"
-        send_fb_action(target_id, page_id, "text", msg)
+        setting = get_system_setting("auto_reply_not_found", {"mahabucha": True})
+        if setting.get("mahabucha", True):
+            msg = "⚠️ ขออภัยครับ \n\nไม่พบภาพถาดถวายจากรหัสของท่าน \n\nรบกวนรอแอดมินเข้ามาตรวจสอบให้ซักครู่นะครับ ⏳"
+            send_fb_action(target_id, page_id, "text", msg)
+        else:
+            print(f"⏭️ [SKIP] Missing images for Mahabucha codes: {unknown_codes}. Passing silently due to setting.")
 
 
 def check_and_send_catalog_codes(target_id, text, page_id):
@@ -465,14 +488,18 @@ def process_muteteam(target_id, text, page_id):
                 send_fb_action(target_id, page_id, "text", f"ภาพถาดถวาย {idx}/{len(matched_files)}")
                 send_fb_action(target_id, page_id, "image", get_image_url("muteteam", filename))
         else:
-            msg = (
-                "⏳ เรียนผู้มีจิตศรัทธาที่นับถือครับ\n\n"
-                "ขณะนี้คณะทีมงานยังอยู่ระหว่างดำเนินการนำถาดถวายของท่าน\n"
-                "เข้าสู่พิธีกรรมอย่างเป็นขั้นตอนครับ\n\n"
-                "รบกวนรอทีมงานนำฝากถวายให้แล้วเสร็จ\n"
-                "แล้วท่านจะได้รับภาพเป็นที่ระลึกจากพิธีนะครับ 🙏✨"
-            )
-            send_fb_action(target_id, page_id, "text", msg)
+            setting = get_system_setting("auto_reply_not_found", {"muteteam": True})
+            if setting.get("muteteam", True):
+                msg = (
+                    "⏳ เรียนผู้มีจิตศรัทธาที่นับถือครับ\n\n"
+                    "ขณะนี้คณะทีมงานยังอยู่ระหว่างดำเนินการนำถาดถวายของท่าน\n"
+                    "เข้าสู่พิธีกรรมอย่างเป็นขั้นตอนครับ\n\n"
+                    "รบกวนรอทีมงานนำฝากถวายให้แล้วเสร็จ\n"
+                    "แล้วท่านจะได้รับภาพเป็นที่ระลึกจากพิธีนะครับ 🙏✨"
+                )
+                send_fb_action(target_id, page_id, "text", msg)
+            else:
+                print(f"⏭️ [SKIP] Missing images for Muteteam code: {booking_code}. Passing silently due to setting.")
 
 
 def process_message(target_id, text, page_id):
