@@ -156,6 +156,29 @@ def get_booking_by_code(booking_code, owner):
         print(f"Supabase error get_booking: {e}")
     return None
 
+def get_supabase_storage_stats(bucket_name):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return 0, 0
+    try:
+        base = SUPABASE_URL.rstrip("/")
+        rest_base = base if base.endswith("/rest/v1") else f"{base}/rest/v1"
+        url = f"{rest_base}/objects"
+        headers = {
+            "apikey": SUPABASE_KEY, 
+            "Authorization": f"Bearer {SUPABASE_KEY}", 
+            "Accept-Profile": "storage"
+        }
+        params = {"bucket_id": f"eq.{bucket_name}", "select": "metadata"}
+        r = requests.get(url, headers=headers, params=params, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            count = len(data)
+            size_bytes = sum(item.get("metadata", {}).get("size", 0) for item in data)
+            return count, size_bytes
+    except Exception as e:
+        print(f"Supabase storage stats error: {e}")
+    return 0, 0
+
 def update_booking_auto_reply_log(booking_id, logs, status_to_set, error_msg=None):
     if not SUPABASE_URL or not SUPABASE_KEY: return
     try:
@@ -936,8 +959,14 @@ def system_status():
         "auto_catalog": getattr(app, 'last_auto_catalog_time', None),
     }
 
-    total_images = len(CACHED_FILES.get("mahabucha", {})) + len(CACHED_FILES.get("muteteam", {}))
-    total_images_size_mb = (TOTAL_IMAGES_SIZE.get("mahabucha", 0) + TOTAL_IMAGES_SIZE.get("muteteam", 0)) / (1024 * 1024)
+    total_images_github = len(CACHED_FILES.get("mahabucha", {})) + len(CACHED_FILES.get("muteteam", {}))
+    total_images_size_github_mb = (TOTAL_IMAGES_SIZE.get("mahabucha", 0) + TOTAL_IMAGES_SIZE.get("muteteam", 0)) / (1024 * 1024)
+
+    supabase_count, supabase_size = get_supabase_storage_stats("portfolio")
+    supabase_size_mb = supabase_size / (1024 * 1024)
+
+    total_images = total_images_github + supabase_count
+    total_images_size_mb = total_images_size_github_mb + supabase_size_mb
 
     return jsonify({
         "server": {
@@ -1067,12 +1096,17 @@ def mahabucha_daily_summary():
             return
             
         print("🕒 [SUMMARY] Running daily event summary check...")
+        base = SUPABASE_URL.rstrip("/")
+        rest_base = base if base.endswith("/rest/v1") else f"{base}/rest/v1"
+        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+
         # 1. Check if daily summary is enabled for mahabucha
-        res = supabase.table("system_settings").select("value").eq("id", "daily_summary_mahabucha").execute()
-        if not res.data:
+        url_settings = f"{rest_base}/system_settings"
+        res_settings = requests.get(url_settings, headers=headers, params={"id": "eq.daily_summary_mahabucha", "select": "value"}, timeout=10)
+        if res_settings.status_code != 200 or not res_settings.json():
             return
             
-        setting_val = res.data[0].get("value", {})
+        setting_val = res_settings.json()[0].get("value", {})
         if not setting_val.get("enabled", False):
             print("🕒 [SUMMARY] Daily summary for mahabucha is disabled.")
             return
@@ -1082,9 +1116,14 @@ def mahabucha_daily_summary():
         now = datetime.now(tz)
         today = now.date()
         
-        events = supabase.table("galleries").select("id, caption, event_date, created_at").eq("owner", "mahabucha").not_("event_date", "is", "null").execute()
+        url_galleries = f"{rest_base}/galleries"
+        res_galleries = requests.get(url_galleries, headers=headers, params={"owner": "eq.mahabucha", "event_date": "not.is.null", "select": "id,caption,event_date,created_at"}, timeout=10)
+        if res_galleries.status_code != 200 or not res_galleries.json():
+            return
+            
+        events_data = res_galleries.json()
         
-        for ev in events.data:
+        for ev in events_data:
             ev_date_str = ev.get("event_date")
             if not ev_date_str:
                 continue
@@ -1098,7 +1137,12 @@ def mahabucha_daily_summary():
             is_final = (today == ev_date)
             
             # Fetch all bookings for this gallery (any status)
-            bookings = supabase.table("bookings").select("total_price, tray_count, created_at").eq("gallery_id", ev["id"]).execute()
+            url_bookings = f"{rest_base}/bookings"
+            res_bookings = requests.get(url_bookings, headers=headers, params={"gallery_id": f"eq.{ev['id']}", "select": "total_price,tray_count,created_at"}, timeout=10)
+            if res_bookings.status_code != 200:
+                continue
+            
+            bookings_data = res_bookings.json()
             
             # 24-hour cutoff
             yesterday_2100 = now.replace(hour=21, minute=0, second=0, microsecond=0) - timedelta(days=1)
@@ -1107,7 +1151,7 @@ def mahabucha_daily_summary():
             total_by_price = defaultdict(int)
             today_by_price = defaultdict(int)
             
-            for b in bookings.data:
+            for b in bookings_data:
                 b_created_at_str = b.get("created_at")
                 if not b_created_at_str:
                     continue
