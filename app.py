@@ -927,7 +927,7 @@ def system_status():
         "gemini": bool(GEMINI_API_KEY),
         "cloudinary": bool(os.environ.get('CLOUDINARY_API_KEY')),
         "line_notify": bool(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')),
-        "fb_graph": bool(os.environ.get('FB_PAGE_ACCESS_TOKEN_MUTETEAM'))
+        "fb_graph": bool(os.environ.get('MUTETEAM_TOKEN') or os.environ.get('MAHABUCHA_TOKEN'))
     }
 
     # Background Jobs info
