@@ -156,25 +156,39 @@ def get_booking_by_code(booking_code, owner):
         print(f"Supabase error get_booking: {e}")
     return None
 
-def get_supabase_storage_stats(bucket_name):
+def get_supabase_storage_stats(bucket_name, prefix=""):
     if not SUPABASE_URL or not SUPABASE_KEY:
         return 0, 0
     try:
         base = SUPABASE_URL.rstrip("/")
-        rest_base = base if base.endswith("/rest/v1") else f"{base}/rest/v1"
-        url = f"{rest_base}/objects"
+        url = f"{base}/storage/v1/object/list/{bucket_name}"
         headers = {
             "apikey": SUPABASE_KEY, 
-            "Authorization": f"Bearer {SUPABASE_KEY}", 
-            "Accept-Profile": "storage"
+            "Authorization": f"Bearer {SUPABASE_KEY}"
         }
-        params = {"bucket_id": f"eq.{bucket_name}", "select": "metadata"}
-        r = requests.get(url, headers=headers, params=params, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            count = len(data)
-            size_bytes = sum(item.get("metadata", {}).get("size", 0) for item in data)
-            return count, size_bytes
+        payload = {"prefix": prefix, "limit": 1000, "offset": 0}
+        r = requests.post(url, headers=headers, json=payload, timeout=10)
+        
+        if r.status_code != 200:
+            return 0, 0
+            
+        data = r.json()
+        count = 0
+        size = 0
+        
+        for item in data:
+            if item.get("id") is None: # It's a folder!
+                folder_name = item.get("name")
+                if folder_name and folder_name != ".emptyFolderPlaceholder":
+                    new_prefix = f"{prefix}{folder_name}/" if prefix else f"{folder_name}/"
+                    sub_count, sub_size = get_supabase_storage_stats(bucket_name, new_prefix)
+                    count += sub_count
+                    size += sub_size
+            else: # It's a file
+                count += 1
+                size += item.get("metadata", {}).get("size", 0)
+                
+        return count, size
     except Exception as e:
         print(f"Supabase storage stats error: {e}")
     return 0, 0
