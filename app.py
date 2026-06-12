@@ -1310,6 +1310,59 @@ def mahabucha_daily_summary():
     except Exception as e:
         print(f"❌ [SUMMARY] Error in daily event summary: {e}")
 
+# --- 📸 SERVER AI OCR ---
+@app.route('/api/ocr-image', methods=['POST'])
+def ocr_image():
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "GEMINI_API_KEY is not configured"}), 500
+        
+    try:
+        data = request.get_json(silent=True)
+        if not data or not data.get("image"):
+            return jsonify({"error": "No image data provided"}), 400
+            
+        base64_image = data["image"]
+        # Remove prefix if present (e.g. data:image/png;base64,)
+        if "," in base64_image:
+            base64_image = base64_image.split(",")[1]
+            
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": "Extract the booking code from this image. The code format is either 12 digits (e.g., 123456789012) or \\d+[A-Za-z]{2}\\d+ (e.g., 12MB010001). Reply ONLY with the exact code. If no code is found, reply with 'NOT_FOUND'."
+                        },
+                        {
+                            "inline_data": {
+                                "mime_type": "image/jpeg",
+                                "data": base64_image
+                            }
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1
+            }
+        }
+        
+        r = requests.post(url, json=payload, timeout=20)
+        if r.status_code == 200:
+            result_data = r.json()
+            if "candidates" in result_data and len(result_data["candidates"]) > 0:
+                text = result_data["candidates"][0]["content"]["parts"][0].get("text", "").strip()
+                return jsonify({"code": text})
+            else:
+                return jsonify({"code": "NOT_FOUND"})
+        else:
+            return jsonify({"error": f"Gemini API returned {r.status_code}", "details": r.text}), 500
+            
+    except Exception as e:
+        print(f"Error in OCR image API: {e}")
+        return jsonify({"error": str(e)}), 500
+
 # Start the background scheduler
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=check_trending_news, trigger="interval", hours=1)
