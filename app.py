@@ -1280,25 +1280,25 @@ def mahabucha_daily_summary():
             caption = ev.get("caption", "งานพิธีมหาบูชา")
             
             if is_final:
-                msg = f"🔔 สรุปผลปิดยอดงานพิธี: {caption}\n📅 ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+                msg = f"🔔 สรุปผลปิดยอดงานพิธี {caption}\n📅 ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
             else:
-                msg = f"🔔 สรุปยอดงานพิธี: {caption}\n📅 ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+                msg = f"🔔 สรุปยอดงานพิธี {caption}\n📅 ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
                 
             msg += "[ 📈 ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
             today_total = 0
             for price in sorted(today_by_price.keys()):
                 c = today_by_price[price]
                 today_total += c
-                msg += f"- แบบ {price}: +{c} ถาด\n"
-            msg += f"รวมเพิ่มวันนี้: +{today_total} ถาด\n\n"
+                msg += f"- แบบ {price} จำนวน +{c} ถาด\n"
+            msg += f"รวมเพิ่มวันนี้ +{today_total} ถาด\n\n"
             
             msg += "[ 📊 ยอดรวมสะสมทั้งหมด ]\n"
             overall_total = 0
             for price in sorted(total_by_price.keys()):
                 c = total_by_price[price]
                 overall_total += c
-                msg += f"- แบบ {price}: {c} ถาด\n"
-            msg += f"✅ รวมสะสมทั้งหมด: {overall_total} ถาด\n\n"
+                msg += f"- แบบ {price} จำนวน {c} ถาด\n"
+            msg += f"✅ รวมสะสมทั้งหมด {overall_total} ถาด\n\n"
             
             if is_final:
                 msg += "🙏 สิ้นสุดการรับจองและปิดยอดสำหรับงานพิธีนี้เรียบร้อยครับ"
