@@ -970,10 +970,15 @@ def notify_photo():
     if not owner or not booking_code:
         return jsonify({"success": False, "message": "ข้อมูลไม่ครบถ้วน"}), 400
 
+    now_th = datetime.now(timezone(timedelta(hours=7)))
+    months_th = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
+    date_str = f"{now_th.day} {months_th[now_th.month]} {now_th.year + 543} เวลา {now_th.strftime('%H:%M')} น."
+
     page_name = "มหาบูชา" if owner == "mahabucha" else "มูเตทีม"
     text = (
         f"🔔 [คิวปริ้นใหม่]\n"
         f"เพจ: {page_name}\n"
+        f"วันที่: {date_str}\n"
         f"รหัสจอง: {booking_code}\n"
         f"ลูกค้า: {display_name}"
     )
