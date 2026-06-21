@@ -1149,7 +1149,7 @@ def check_trending_news():
         headlines_text = "\n".join([f"- {e.title} (URL: {e.link})" for e in new_entries])
         
         prompt = f"""
-วิเคราะห์หัวข้อข่าวต่อไปนี้ ว่ามีเหตุการณ์สำคัญระดับประเทศที่เป็นกระแสและสะเทือนใจ (เช่น น้ำท่วมหนัก, ไฟไหม้ใหญ่, อุบัติเหตุรุนแรง, ตึกถล่ม, ภัยพิบัติ) ที่เหมาะสมกับการนำไปโพสต์ในเพจสายมูเตลูเพื่อส่งกำลังใจและชวนคนมาสวดมนต์ขอพรหรือไม่
+วิเคราะห์หัวข้อข่าวต่อไปนี้ ว่ามีข่าวที่เป็นกระแสสังคม ข่าวใหญ่ระดับประเทศ ข่าวเกี่ยวกับความเชื่อ/สายมู หรือข่าวที่ส่งผลกระทบต่อจิตใจคน (เช่น ภัยพิบัติ อุบัติเหตุ เรื่องเศร้า หรือเรื่องที่คนกำลังให้ความสนใจ) ที่เหมาะสมกับการนำไปโพสต์ในเพจสายมูเตลูเพื่อเกาะกระแส ส่งกำลังใจ หรือชวนคนมาสวดมนต์ขอพรหรือไม่
 
 หัวข้อข่าว:
 {headlines_text}
@@ -1454,7 +1454,7 @@ def ocr_image():
 
 # Start the background scheduler
 scheduler = BackgroundScheduler()
-scheduler.add_job(func=check_trending_news, trigger="interval", hours=1)
+scheduler.add_job(func=check_trending_news, trigger="interval", hours=1, next_run_time=datetime.now())
 scheduler.add_job(func=mahabucha_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.add_job(func=muteteam_monthly_summary, trigger="cron", day="last", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.start()
