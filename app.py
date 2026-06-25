@@ -47,7 +47,8 @@ GEMINI_API_KEY    = os.environ.get('GEMINI_API_KEY')
 SUPABASE_URL      = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY      = os.environ.get('SUPABASE_KEY')
 
-LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA') or os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM  = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM', "9sL5oVYE8cnPJGUL6tuDb8ZJ9MS2dk6ddZlrKLcY7SV5tYOBCLp3Cx0wCL/VJhmG7pA2f2EEmcs4UFfkCKjqfMgP7ViSBRVdbjxO/Ad//nrW6WxURrj0JdNVZuzzRdLOmiQ1MX8YNlncQJC2165FrgdB04t89/1O/w1cDnyilFU=")
 LINE_GROUP_ID_MAHABUCHA   = os.environ.get('LINE_GROUP_ID_MAHABUCHA')
 LINE_GROUP_ID_MUTETEAM    = os.environ.get('LINE_GROUP_ID_MUTETEAM')
 
@@ -909,9 +910,10 @@ def debug_gemini():
 
 # --- 📲 11. LINE NOTIFICATIONS ---
 def send_line_notification(owner, text):
-    if not LINE_CHANNEL_ACCESS_TOKEN:
-        print("❌ [LINE] Missing LINE_CHANNEL_ACCESS_TOKEN")
-        return False, "Missing LINE_CHANNEL_ACCESS_TOKEN"
+    token = LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA if owner == 'mahabucha' else LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM
+    if not token:
+        print(f"❌ [LINE] Missing LINE_CHANNEL_ACCESS_TOKEN for {owner}")
+        return False, f"Missing LINE_CHANNEL_ACCESS_TOKEN for {owner}"
         
     group_id = LINE_GROUP_ID_MAHABUCHA if owner == 'mahabucha' else LINE_GROUP_ID_MUTETEAM
     if not group_id:
@@ -921,7 +923,7 @@ def send_line_notification(owner, text):
     url = "https://api.line.me/v2/bot/message/push"
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
+        "Authorization": f"Bearer {token}"
     }
     data = {
         "to": group_id,
@@ -993,10 +995,12 @@ def notify_photo():
 
 @app.route('/api/line-quota', methods=['GET'])
 def get_line_quota():
-    if not LINE_CHANNEL_ACCESS_TOKEN:
-        return jsonify({"error": "No token"}), 500
+    owner = request.args.get('owner', 'mahabucha')
+    token = LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA if owner == 'mahabucha' else LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM
+    if not token:
+        return jsonify({"error": f"No token for {owner}"}), 500
     
-    headers = {"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"}
+    headers = {"Authorization": f"Bearer {token}"}
     r = requests.get("https://api.line.me/v2/bot/message/quota/consumption", headers=headers)
     r2 = requests.get("https://api.line.me/v2/bot/message/quota", headers=headers)
     
@@ -1076,9 +1080,10 @@ def system_status():
 
     # External APIs check
     apis = {
-        "gemini": bool(GEMINI_API_KEY),
+        "gemini_api": bool(GEMINI_API_KEY),
+        "line_notify": bool(LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA or LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM),
+        "timezone": "Asia/Bangkok",
         "cloudinary": bool(os.environ.get('CLOUDINARY_API_KEY')),
-        "line_notify": bool(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')),
         "fb_graph": bool(os.environ.get('MUTETEAM_TOKEN') or os.environ.get('MAHABUCHA_TOKEN'))
     }
 
