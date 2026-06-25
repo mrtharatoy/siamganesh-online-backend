@@ -12,6 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from bs4 import BeautifulSoup
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
