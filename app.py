@@ -1108,6 +1108,18 @@ def system_status():
             "total_images": total_images,
             "total_images_size_mb": round(total_images_size_mb, 2)
         },
+        "storage": {
+            "github": {
+                "count": total_images_github,
+                "size_mb": round(total_images_size_github_mb, 2),
+                "limit_mb": 1024
+            },
+            "supabase": {
+                "count": supabase_count,
+                "size_mb": round(supabase_size_mb, 2),
+                "limit_mb": 1024
+            }
+        },
         "apis": apis,
         "jobs": jobs
     }), 200
