@@ -991,6 +991,20 @@ def notify_photo():
         return jsonify({"success": False, "error": err_msg}), 200
     return jsonify({"success": True}), 200
 
+@app.route('/api/line-quota', methods=['GET'])
+def get_line_quota():
+    if not LINE_CHANNEL_ACCESS_TOKEN:
+        return jsonify({"error": "No token"}), 500
+    
+    headers = {"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"}
+    r = requests.get("https://api.line.me/v2/bot/message/quota/consumption", headers=headers)
+    r2 = requests.get("https://api.line.me/v2/bot/message/quota", headers=headers)
+    
+    return jsonify({
+        "consumption": r.json(),
+        "quota": r2.json()
+    }), 200
+
 @app.route('/api/send-fb-message-manual', methods=['POST'])
 def send_fb_message_manual():
     data = request.json
