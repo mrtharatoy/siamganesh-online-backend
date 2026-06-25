@@ -972,6 +972,26 @@ def line_quota():
         "mahabucha": fetch_quota(get_line_token('mahabucha'))
     }), 200
 
+@app.route('/api/cloudinary-quota', methods=['GET'])
+def cloudinary_quota():
+    if not CLOUDINARY_CLOUD_NAME or not CLOUDINARY_API_KEY or not CLOUDINARY_API_SECRET:
+        return jsonify({"error": "Cloudinary not configured"}), 500
+        
+    try:
+        usage = cloudinary.api.usage()
+        # Ensure we return the relevant data safely
+        return jsonify({
+            "plan": usage.get("plan"),
+            "credits": usage.get("credits", {}),
+            "bandwidth": usage.get("bandwidth", {}),
+            "storage": usage.get("storage", {}),
+            "transformations": usage.get("transformations", {})
+        }), 200
+    except Exception as e:
+        print(f"❌ [Cloudinary] Error fetching quota: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/line-webhook', methods=['POST'])
 def line_webhook():
     try:
