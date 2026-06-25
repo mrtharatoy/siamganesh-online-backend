@@ -911,12 +911,12 @@ def debug_gemini():
 def send_line_notification(owner, text):
     if not LINE_CHANNEL_ACCESS_TOKEN:
         print("❌ [LINE] Missing LINE_CHANNEL_ACCESS_TOKEN")
-        return False
+        return False, "Missing LINE_CHANNEL_ACCESS_TOKEN"
         
     group_id = LINE_GROUP_ID_MAHABUCHA if owner == 'mahabucha' else LINE_GROUP_ID_MUTETEAM
     if not group_id:
         print(f"❌ [LINE] Missing Group ID for owner: {owner}")
-        return False
+        return False, f"Missing Group ID for owner: {owner}"
 
     url = "https://api.line.me/v2/bot/message/push"
     headers = {
@@ -932,13 +932,13 @@ def send_line_notification(owner, text):
         r = requests.post(url, headers=headers, json=data, timeout=10)
         if r.status_code == 200:
             print(f"✅ [LINE] Notification sent to {owner} group.")
-            return True
+            return True, None
         else:
             print(f"❌ [LINE] Failed to send: {r.status_code} {r.text}")
-            return False
+            return False, f"LINE API Error {r.status_code}: {r.text}"
     except Exception as e:
         print(f"❌ [LINE] Error sending notification: {e}")
-        return False
+        return False, str(e)
 
 @app.route('/api/line-webhook', methods=['POST'])
 def line_webhook():
@@ -986,8 +986,10 @@ def notify_photo():
     if owner != "mahabucha":
         text += f"\nจำนวน: {tray_count} องค์เทพ"
 
-    success = send_line_notification(owner, text)
-    return jsonify({"success": success}), 200
+    success, err_msg = send_line_notification(owner, text)
+    if not success:
+        return jsonify({"success": False, "error": err_msg}), 200
+    return jsonify({"success": True}), 200
 
 @app.route('/api/send-fb-message-manual', methods=['POST'])
 def send_fb_message_manual():
