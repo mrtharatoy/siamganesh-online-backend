@@ -47,6 +47,7 @@ GEMINI_API_KEY    = os.environ.get('GEMINI_API_KEY')
 SUPABASE_URL      = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY      = os.environ.get('SUPABASE_KEY')
 
+LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA') or os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM  = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM', "9sL5oVYE8cnPJGUL6tuDb8ZJ9MS2dk6ddZlrKLcY7SV5tYOBCLp3Cx0wCL/VJhmG7pA2f2EEmcs4UFfkCKjqfMgP7ViSBRVdbjxO/Ad//nrW6WxURrj0JdNVZuzzRdLOmiQ1MX8YNlncQJC2165FrgdB04t89/1O/w1cDnyilFU=")
 LINE_GROUP_ID_MAHABUCHA   = os.environ.get('LINE_GROUP_ID_MAHABUCHA')
@@ -909,8 +910,15 @@ def debug_gemini():
         return jsonify({"error": str(e), "gemini_key_set": bool(GEMINI_API_KEY)}), 500
 
 # --- 📲 11. LINE NOTIFICATIONS ---
+def get_line_token(owner):
+    if owner == 'mahabucha' and LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA:
+        return LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA
+    if owner == 'muteteam' and LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM:
+        return LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM
+    return LINE_CHANNEL_ACCESS_TOKEN
+
 def send_line_notification(owner, text):
-    token = LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA if owner == 'mahabucha' else LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM
+    token = get_line_token(owner)
     if not token:
         print(f"❌ [LINE] Missing LINE_CHANNEL_ACCESS_TOKEN for {owner}")
         return False, f"Missing LINE_CHANNEL_ACCESS_TOKEN for {owner}"
@@ -941,6 +949,28 @@ def send_line_notification(owner, text):
     except Exception as e:
         print(f"❌ [LINE] Error sending notification: {e}")
         return False, str(e)
+
+@app.route('/api/line-quota', methods=['GET'])
+def line_quota():
+    def fetch_quota(token):
+        if not token: return None
+        try:
+            h = {"Authorization": f"Bearer {token}"}
+            usage_res = requests.get("https://api.line.me/v2/bot/message/quota/consumption", headers=h, timeout=5)
+            limit_res = requests.get("https://api.line.me/v2/bot/message/quota", headers=h, timeout=5)
+            
+            usage = usage_res.json().get('totalUsage', 0) if usage_res.status_code == 200 else 0
+            limit_data = limit_res.json() if limit_res.status_code == 200 else {}
+            limit = limit_data.get('value', 0)
+            
+            return {"usage": usage, "limit": limit}
+        except:
+            return None
+
+    return jsonify({
+        "muteteam": fetch_quota(get_line_token('muteteam')),
+        "mahabucha": fetch_quota(get_line_token('mahabucha'))
+    }), 200
 
 @app.route('/api/line-webhook', methods=['POST'])
 def line_webhook():
