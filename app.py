@@ -10,9 +10,7 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from apscheduler.schedulers.background import BackgroundScheduler
 from bs4 import BeautifulSoup
-import cloudinary
-import cloudinary.uploader
-import cloudinary.api
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -25,18 +23,6 @@ SERVER_START_TIME = datetime.now()
 GITHUB_USERNAME = os.getenv("GITHUB_USERNAME", "mrtharatoy")
 REPO_NAME       = os.getenv("REPO_NAME", "siamganesh-online-backend")
 BRANCH          = os.getenv("BRANCH", "main")
-
-CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
-CLOUDINARY_API_KEY    = os.getenv("CLOUDINARY_API_KEY")
-CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
-
-if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
-    cloudinary.config(
-        cloud_name = CLOUDINARY_CLOUD_NAME,
-        api_key = CLOUDINARY_API_KEY,
-        api_secret = CLOUDINARY_API_SECRET,
-        secure = True
-    )
 
 MAHABUCHA_PAGE_ID = os.environ.get('MAHABUCHA_PAGE_ID')
 MAHABUCHA_TOKEN   = os.environ.get('MAHABUCHA_TOKEN')
@@ -695,20 +681,7 @@ def upload_image():
             # Mahabucha, just count it as "uploaded" so it succeeds
             uploaded.append(filename)
 
-        # Upload to Cloudinary
-        if CLOUDINARY_CLOUD_NAME:
-            try:
-                folder_name = f"Siamganesh-{owner.capitalize()}"
-                b64_prefix = f"data:image/{ext};base64,{data_b64}"
-                res = cloudinary.uploader.upload(
-                    b64_prefix,
-                    folder=folder_name,
-                    public_id=f"{booking_code}_{index}"
-                )
-                print(f"✅ [Cloudinary] Uploaded {filename} to {res.get('secure_url')}")
-            except Exception as e:
-                print(f"❌ [Cloudinary] Error uploading {filename}: {e}")
-                errors.append(f"Cloudinary {filename}: {e}")
+
 
     if uploaded:
         threading.Thread(target=update_file_list, daemon=True).start()
@@ -838,22 +811,6 @@ def delete_image():
     else:
         msg = f"ไม่พบไฟล์ใน GitHub หรือข้ามไป ({check.status_code})"
 
-    # Also delete from Cloudinary
-    if CLOUDINARY_CLOUD_NAME:
-        try:
-            folder_name = f"Siamganesh-{page.capitalize()}"
-            public_id = f"{folder_name}/{filename.split('.')[0]}"
-            res = cloudinary.uploader.destroy(public_id)
-            print(f"🧹 [Cloudinary] Destroyed {public_id}: {res}")
-            if not success:
-                success = True
-                msg = "ลบไฟล์ออกจาก Cloudinary สำเร็จ"
-            else:
-                msg += " และ Cloudinary สำเร็จ"
-        except Exception as e:
-            print(f"❌ [Cloudinary] Error destroying {filename}: {e}")
-            msg += f" (Cloudinary error: {e})"
-
     if success:
         return jsonify({"success": True, "message": msg}), 200
     else:
@@ -973,24 +930,7 @@ def line_quota():
         "mahabucha": fetch_quota(get_line_token('mahabucha'))
     }), 200
 
-@app.route('/api/cloudinary-quota', methods=['GET'])
-def cloudinary_quota():
-    if not CLOUDINARY_CLOUD_NAME or not CLOUDINARY_API_KEY or not CLOUDINARY_API_SECRET:
-        return jsonify({"error": "Cloudinary not configured"}), 500
-        
-    try:
-        usage = cloudinary.api.usage()
-        # Ensure we return the relevant data safely
-        return jsonify({
-            "plan": usage.get("plan"),
-            "credits": usage.get("credits", {}),
-            "bandwidth": usage.get("bandwidth", {}),
-            "storage": usage.get("storage", {}),
-            "transformations": usage.get("transformations", {})
-        }), 200
-    except Exception as e:
-        print(f"❌ [Cloudinary] Error fetching quota: {e}")
-        return jsonify({"error": str(e)}), 500
+
 
 
 @app.route('/api/line-webhook', methods=['POST'])
@@ -1134,7 +1074,6 @@ def system_status():
         "gemini_api": bool(GEMINI_API_KEY),
         "line_notify": bool(LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA or LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM),
         "timezone": "Asia/Bangkok",
-        "cloudinary": bool(os.environ.get('CLOUDINARY_API_KEY')),
         "fb_graph": bool(os.environ.get('MUTETEAM_TOKEN') or os.environ.get('MAHABUCHA_TOKEN'))
     }
 
