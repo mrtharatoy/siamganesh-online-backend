@@ -248,16 +248,27 @@ def get_booking_names(booking_code):
         print(f"Supabase error: {e}")
     return None, None
 
-def force_complete_booking_by_psid(psid, page_id=None):
+def force_complete_booking_by_psid(psid, page_id=None, booking_code=None):
     if not SUPABASE_URL or not SUPABASE_KEY: return
     try:
         base = SUPABASE_URL.rstrip("/")
         headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
         
+        found_rows = []
+        
+        # 0. If booking code is explicitly provided
+        if booking_code:
+            url = f"{base}/bookings?booking_code=eq.{booking_code}&status=eq.ready_to_send" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?booking_code=eq.{booking_code}&status=eq.ready_to_send"
+            r = requests.get(f"{url}&select=id,activity_logs", headers=headers, timeout=10)
+            if r.status_code == 200:
+                found_rows = r.json()
+                
         # 1. Try exact PSID match
-        url = f"{base}/bookings?psid=eq.{psid}&status=eq.ready_to_send" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?psid=eq.{psid}&status=eq.ready_to_send"
-        r = requests.get(f"{url}&select=id,activity_logs", headers=headers, timeout=10)
-        found_rows = r.json() if r.status_code == 200 else []
+        if not found_rows:
+            url = f"{base}/bookings?psid=eq.{psid}&status=eq.ready_to_send" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?psid=eq.{psid}&status=eq.ready_to_send"
+            r = requests.get(f"{url}&select=id,activity_logs", headers=headers, timeout=10)
+            if r.status_code == 200:
+                found_rows = r.json()
         
         # 2. Fallback: Lookup by Name using Graph API if no exact PSID match (handles ASID vs PSID mismatch)
         if not found_rows and page_id:
@@ -603,9 +614,18 @@ def webhook():
             # Normalize Thai text and check for keywords to avoid encoding issues with Sara Am
             if is_echo and ("#จัดส่ง" in text or "#จบงาน" in text or "#done" in text.lower()):
                 print(f"✅ [DETECTED COMMAND] target={target_id} text contains closing tag")
+                
+                # Check if a booking code is provided in the message
+                booking_code = None
+                match = re.search(r'#(?:จัดส่ง|จบงาน)[^\sA-Za-z0-9]*\s*([0-9a-zA-Z]+)', text)
+                if match:
+                    code = match.group(1).strip().upper()
+                    if len(code) > 5:
+                        booking_code = code
+
                 threading.Thread(
                     target=force_complete_booking_by_psid,
-                    args=(target_id, page_id),
+                    args=(target_id, page_id, booking_code),
                     daemon=True
                 ).start()
                 continue
