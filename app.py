@@ -330,9 +330,9 @@ def generate_thank_you_message(booking_code, person1_name=None, person2_name=Non
 
 
 def process_mahabucha(target_id, text, page_id):
-    pattern_regex = r'\d+[a-z]{2}\d+'
-    text_cleaned  = text.lower().replace(" ", "")
-    valid_codes   = re.findall(pattern_regex, text_cleaned)
+    pattern_regex = r'\b\d+\s*[a-z]{2}\s*\d+\b'
+    matches       = re.findall(pattern_regex, text.lower())
+    valid_codes   = [m.replace(" ", "").replace("\n", "") for m in matches]
 
     if not valid_codes:
         return
@@ -442,8 +442,9 @@ def check_and_send_catalog_codes(target_id, text, page_id):
 
 
 def process_muteteam(target_id, text, page_id):
-    pattern_regex = r'\b(\d{12})\b'
-    valid_codes   = re.findall(pattern_regex, text.replace(" ", ""))
+    pattern_regex = r'(?<!\d)(?:(?:\d\s*){12})(?!\d)'
+    matches       = re.findall(pattern_regex, text)
+    valid_codes   = [m.replace(" ", "").replace("\n", "") for m in matches]
 
     # Check for catalog codes and send images if found
     check_and_send_catalog_codes(target_id, text, page_id)
