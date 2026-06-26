@@ -245,67 +245,7 @@ def get_booking_names(booking_code):
             row = r.json()[0]
             return row.get("person1_name"), row.get("person2_name")
     except Exception as e:
-        print(f"Supabase error: {e}")
-    return None, None
 
-def force_complete_booking_by_psid(psid, page_id=None, booking_code=None):
-    if not SUPABASE_URL or not SUPABASE_KEY: return
-    try:
-        base = SUPABASE_URL.rstrip("/")
-        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
-        
-        found_rows = []
-        
-        # 0. If booking code is explicitly provided
-        if booking_code:
-            url = f"{base}/bookings?booking_code=eq.{booking_code}&status=eq.ready_to_send" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?booking_code=eq.{booking_code}&status=eq.ready_to_send"
-            r = requests.get(f"{url}&select=id,activity_logs", headers=headers, timeout=10)
-            if r.status_code == 200:
-                found_rows = r.json()
-                
-        # 1. Try exact PSID match
-        if not found_rows:
-            url = f"{base}/bookings?psid=eq.{psid}&status=eq.ready_to_send" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?psid=eq.{psid}&status=eq.ready_to_send"
-            r = requests.get(f"{url}&select=id,activity_logs", headers=headers, timeout=10)
-            if r.status_code == 200:
-                found_rows = r.json()
-        
-        # 2. Fallback: Lookup by Name using Graph API if no exact PSID match (handles ASID vs PSID mismatch)
-        if not found_rows and page_id:
-            token = get_page_token(page_id)
-            if token:
-                fb_url = f"https://graph.facebook.com/v19.0/{psid}?fields=first_name,last_name&access_token={token}"
-                fb_res = requests.get(fb_url, timeout=10)
-                if fb_res.status_code == 200:
-                    fb_data = fb_res.json()
-                    fname = fb_data.get("first_name", "").lower()
-                    lname = fb_data.get("last_name", "").lower()
-                    
-                    if fname or lname:
-                        search_url = f"{base}/bookings?status=eq.ready_to_send&select=id,activity_logs,customer_name,facebook,person1_name" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?status=eq.ready_to_send&select=id,activity_logs,customer_name,facebook,person1_name"
-                        all_res = requests.get(search_url, headers=headers, timeout=10)
-                        if all_res.status_code == 200:
-                            for row in all_res.json():
-                                c_name = (row.get('customer_name') or '').lower()
-                                f_name = (row.get('facebook') or '').lower()
-                                p_name = (row.get('person1_name') or '').lower()
-                                
-                                # Match if first_name OR last_name is in any of the names
-                                if (fname and (fname in c_name or fname in f_name or fname in p_name)) or \
-                                   (lname and (lname in c_name or lname in f_name or lname in p_name)):
-                                    found_rows.append(row)
-        
-        # 3. Process completion
-        for row in found_rows:
-            b_id = row['id']
-            logs = row.get('activity_logs') or []
-            new_log = {"action": "completed", "by": "ระบบอัตโนมัติ (แอดมินพิมพ์ #จัดส่ง)", "timestamp": datetime.utcnow().isoformat() + "Z"}
-            payload = {"status": "completed", "activity_logs": logs + [new_log]}
-            update_url = f"{base}/bookings?id=eq.{b_id}" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?id=eq.{b_id}"
-            requests.patch(update_url, headers=headers, json=payload, timeout=10)
-            print(f"✅ [FORCE COMPLETE] PSID={psid} Booking={b_id}")
-    except Exception as e:
-        print(f"❌ [FORCE COMPLETE ERROR] {e}")
 
 
 
@@ -611,24 +551,6 @@ def webhook():
                 print("⏭️ [SKIP] no target_id")
                 continue
 
-            # Normalize Thai text and check for keywords to avoid encoding issues with Sara Am
-            if is_echo and ("#จัดส่ง" in text or "#จบงาน" in text or "#done" in text.lower()):
-                print(f"✅ [DETECTED COMMAND] target={target_id} text contains closing tag")
-                
-                # Check if a booking code is provided in the message
-                booking_code = None
-                match = re.search(r'#(?:จัดส่ง|จบงาน)[^\sA-Za-z0-9]*\s*([0-9a-zA-Z]+)', text)
-                if match:
-                    code = match.group(1).strip().upper()
-                    if len(code) > 5:
-                        booking_code = code
-
-                threading.Thread(
-                    target=force_complete_booking_by_psid,
-                    args=(target_id, page_id, booking_code),
-                    daemon=True
-                ).start()
-                continue
 
             print(f"🚀 [DISPATCH] target={target_id} text='{text}'")
             threading.Thread(
@@ -700,55 +622,6 @@ def list_images_api():
         })
         
     return jsonify({"success": True, "results": results, "count": len(results)}), 200
-@app.route('/api/test-complete', methods=['GET'])
-def test_complete():
-    psid = request.args.get("psid")
-    page_id = request.args.get("page_id")
-    if not psid: return jsonify({"error": "missing psid"})
-    
-    logs = []
-    
-    if not SUPABASE_URL or not SUPABASE_KEY: return jsonify({"error": "no db"})
-    try:
-        base = SUPABASE_URL.rstrip("/")
-        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
-        
-        url = f"{base}/bookings?psid=eq.{psid}&status=eq.ready_to_send" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?psid=eq.{psid}&status=eq.ready_to_send"
-        r = requests.get(f"{url}&select=id,activity_logs", headers=headers, timeout=10)
-        found_rows = r.json() if r.status_code == 200 else []
-        logs.append(f"Exact PSID search found: {len(found_rows)}")
-        
-        if not found_rows and page_id:
-            token = get_page_token(page_id)
-            logs.append(f"Token found: {bool(token)}")
-            if token:
-                fb_url = f"https://graph.facebook.com/v19.0/{psid}?fields=first_name,last_name&access_token={token}"
-                fb_res = requests.get(fb_url, timeout=10)
-                logs.append(f"FB Graph status: {fb_res.status_code}")
-                if fb_res.status_code == 200:
-                    fb_data = fb_res.json()
-                    logs.append(f"FB Graph data: {fb_data}")
-                    fname = fb_data.get("first_name", "").lower()
-                    lname = fb_data.get("last_name", "").lower()
-                    
-                    if fname or lname:
-                        search_url = f"{base}/bookings?status=eq.ready_to_send&select=id,activity_logs,customer_name,facebook,person1_name" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?status=eq.ready_to_send&select=id,activity_logs,customer_name,facebook,person1_name"
-                        all_res = requests.get(search_url, headers=headers, timeout=10)
-                        logs.append(f"Supabase search status: {all_res.status_code}")
-                        if all_res.status_code == 200:
-                            for row in all_res.json():
-                                c_name = (row.get('customer_name') or '').lower()
-                                f_name = (row.get('facebook') or '').lower()
-                                p_name = (row.get('person1_name') or '').lower()
-                                
-                                if (fname and (fname in c_name or fname in f_name or fname in p_name)) or \
-                                   (lname and (lname in c_name or lname in f_name or lname in p_name)):
-                                    found_rows.append(row)
-                                    logs.append(f"Matched row: {row.get('id')} with names: {c_name}, {f_name}, {p_name}")
-
-        return jsonify({"success": True, "logs": logs, "found": len(found_rows)}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/debug-webhook', methods=['GET'])
 def get_debug_webhook():
