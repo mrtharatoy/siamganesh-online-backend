@@ -544,6 +544,21 @@ def webhook():
 
             print(f"📩 [WEBHOOK] page={page_id} sender={sender_id} recipient={recipient_id} is_echo={is_echo} text='{text[:30]}'")
 
+            # DEBUG LOG TO SUPABASE
+            if is_echo and not metadata == "BOT_SENT_THIS":
+                try:
+                    if SUPABASE_URL and SUPABASE_KEY:
+                        base = SUPABASE_URL.rstrip("/")
+                        url = f"{base}/system_settings" if base.endswith("/rest/v1") else f"{base}/rest/v1/system_settings"
+                        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
+                        debug_payload = {
+                            "id": "debug_webhook",
+                            "value": {"event": event, "time": datetime.utcnow().isoformat()}
+                        }
+                        requests.post(url, headers=headers, json=debug_payload, timeout=5)
+                except Exception as e:
+                    print("Debug log error", e)
+
             if metadata == "BOT_SENT_THIS":
                 print("⏭️ [SKIP] BOT_SENT_THIS")
                 continue
