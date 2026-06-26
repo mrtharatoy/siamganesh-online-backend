@@ -248,6 +248,28 @@ def get_booking_names(booking_code):
         print(f"Supabase error: {e}")
     return None, None
 
+def force_complete_booking_by_psid(psid):
+    if not SUPABASE_URL or not SUPABASE_KEY: return
+    try:
+        base = SUPABASE_URL.rstrip("/")
+        # Find active ready_to_send booking for this PSID
+        url = f"{base}/bookings?psid=eq.{psid}&status=eq.ready_to_send" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?psid=eq.{psid}&status=eq.ready_to_send"
+        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
+        
+        r = requests.get(f"{url}&select=id,activity_logs", headers=headers, timeout=10)
+        if r.status_code == 200 and r.json():
+            for row in r.json():
+                b_id = row['id']
+                logs = row.get('activity_logs') or []
+                new_log = {"action": "completed", "by": "ระบบอัตโนมัติ (แอดมินพิมพ์ #จัดส่งสำเร็จ)", "timestamp": datetime.utcnow().isoformat() + "Z"}
+                payload = {"status": "completed", "activity_logs": logs + [new_log]}
+                update_url = f"{base}/bookings?id=eq.{b_id}" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?id=eq.{b_id}"
+                requests.patch(update_url, headers=headers, json=payload, timeout=10)
+                print(f"✅ [FORCE COMPLETE] PSID={psid} Booking={b_id}")
+    except Exception as e:
+        print(f"❌ [FORCE COMPLETE ERROR] {e}")
+
+
 
 def generate_thank_you_message(booking_code, person1_name=None, person2_name=None):
     def fallback():
@@ -533,6 +555,15 @@ def webhook():
 
             if not target_id:
                 print("⏭️ [SKIP] no target_id")
+                continue
+
+            if is_echo and "#จัดส่งสำเร็จ" in text:
+                print(f"✅ [DETECTED COMMAND] target={target_id} text contains #จัดส่งสำเร็จ")
+                threading.Thread(
+                    target=force_complete_booking_by_psid,
+                    args=(target_id,),
+                    daemon=True
+                ).start()
                 continue
 
             print(f"🚀 [DISPATCH] target={target_id} text='{text}'")
