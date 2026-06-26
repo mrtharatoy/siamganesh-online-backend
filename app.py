@@ -653,6 +653,18 @@ def list_images_api():
         })
         
     return jsonify({"success": True, "results": results, "count": len(results)}), 200
+@app.route('/api/debug-webhook', methods=['GET'])
+def get_debug_webhook():
+    if not SUPABASE_URL or not SUPABASE_KEY: return jsonify({"error": "no credentials"})
+    try:
+        base = SUPABASE_URL.rstrip("/")
+        url = f"{base}/system_settings?id=eq.debug_webhook" if base.endswith("/rest/v1") else f"{base}/rest/v1/system_settings?id=eq.debug_webhook"
+        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+        r = requests.get(url, headers=headers)
+        return jsonify(r.json()), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # --- 🔄 7. RELOAD CACHE API ---
 @app.route('/api/reload', methods=['POST'])
 def reload_cache():
