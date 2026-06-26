@@ -245,9 +245,8 @@ def get_booking_names(booking_code):
             row = r.json()[0]
             return row.get("person1_name"), row.get("person2_name")
     except Exception as e:
-
-
-
+        print(f"Supabase error: {e}")
+    return None, None
 
 def generate_thank_you_message(booking_code, person1_name=None, person2_name=None):
     def fallback():
