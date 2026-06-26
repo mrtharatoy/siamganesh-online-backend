@@ -1,10 +1,6 @@
-import requests
-from bs4 import BeautifulSoup
-import sys
+import os, requests
+from dotenv import load_dotenv
 
-headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'}
-url = f"https://m.facebook.com/{sys.argv[1]}"
-r = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
-soup = BeautifulSoup(r.text, 'html.parser')
-title = soup.find('title')
-print(f"Title: {title.text if title else 'No title'}")
+# Let's get MAHABUCHA_TOKEN from env or something.
+# Wait, I can't read the token because it's not in .env locally!
+# Let me write a script that I can curl to execute it on the server!

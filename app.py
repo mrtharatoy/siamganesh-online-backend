@@ -680,6 +680,56 @@ def list_images_api():
         })
         
     return jsonify({"success": True, "results": results, "count": len(results)}), 200
+@app.route('/api/test-complete', methods=['GET'])
+def test_complete():
+    psid = request.args.get("psid")
+    page_id = request.args.get("page_id")
+    if not psid: return jsonify({"error": "missing psid"})
+    
+    logs = []
+    
+    if not SUPABASE_URL or not SUPABASE_KEY: return jsonify({"error": "no db"})
+    try:
+        base = SUPABASE_URL.rstrip("/")
+        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
+        
+        url = f"{base}/bookings?psid=eq.{psid}&status=eq.ready_to_send" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?psid=eq.{psid}&status=eq.ready_to_send"
+        r = requests.get(f"{url}&select=id,activity_logs", headers=headers, timeout=10)
+        found_rows = r.json() if r.status_code == 200 else []
+        logs.append(f"Exact PSID search found: {len(found_rows)}")
+        
+        if not found_rows and page_id:
+            token = get_page_token(page_id)
+            logs.append(f"Token found: {bool(token)}")
+            if token:
+                fb_url = f"https://graph.facebook.com/v19.0/{psid}?fields=first_name,last_name&access_token={token}"
+                fb_res = requests.get(fb_url, timeout=10)
+                logs.append(f"FB Graph status: {fb_res.status_code}")
+                if fb_res.status_code == 200:
+                    fb_data = fb_res.json()
+                    logs.append(f"FB Graph data: {fb_data}")
+                    fname = fb_data.get("first_name", "").lower()
+                    lname = fb_data.get("last_name", "").lower()
+                    
+                    if fname or lname:
+                        search_url = f"{base}/bookings?status=eq.ready_to_send&select=id,activity_logs,customer_name,facebook,person1_name" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?status=eq.ready_to_send&select=id,activity_logs,customer_name,facebook,person1_name"
+                        all_res = requests.get(search_url, headers=headers, timeout=10)
+                        logs.append(f"Supabase search status: {all_res.status_code}")
+                        if all_res.status_code == 200:
+                            for row in all_res.json():
+                                c_name = (row.get('customer_name') or '').lower()
+                                f_name = (row.get('facebook') or '').lower()
+                                p_name = (row.get('person1_name') or '').lower()
+                                
+                                if (fname and (fname in c_name or fname in f_name or fname in p_name)) or \
+                                   (lname and (lname in c_name or lname in f_name or lname in p_name)):
+                                    found_rows.append(row)
+                                    logs.append(f"Matched row: {row.get('id')} with names: {c_name}, {f_name}, {p_name}")
+
+        return jsonify({"success": True, "logs": logs, "found": len(found_rows)}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/debug-webhook', methods=['GET'])
 def get_debug_webhook():
     if not SUPABASE_URL or not SUPABASE_KEY: return jsonify({"error": "no credentials"})
