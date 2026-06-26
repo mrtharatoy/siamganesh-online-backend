@@ -558,8 +558,9 @@ def webhook():
                 print("⏭️ [SKIP] no target_id")
                 continue
 
-            if is_echo and "#จัดส่งสำเร็จ" in text:
-                print(f"✅ [DETECTED COMMAND] target={target_id} text contains #จัดส่งสำเร็จ")
+            # Normalize Thai text and check for keywords to avoid encoding issues with Sara Am
+            if is_echo and ("#จัดส่ง" in text or "#จบงาน" in text or "#done" in text.lower()):
+                print(f"✅ [DETECTED COMMAND] target={target_id} text contains closing tag")
                 threading.Thread(
                     target=force_complete_booking_by_psid,
                     args=(target_id,),
