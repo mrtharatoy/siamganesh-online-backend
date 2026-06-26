@@ -248,24 +248,51 @@ def get_booking_names(booking_code):
         print(f"Supabase error: {e}")
     return None, None
 
-def force_complete_booking_by_psid(psid):
+def force_complete_booking_by_psid(psid, page_id=None):
     if not SUPABASE_URL or not SUPABASE_KEY: return
     try:
         base = SUPABASE_URL.rstrip("/")
-        # Find active ready_to_send booking for this PSID
-        url = f"{base}/bookings?psid=eq.{psid}&status=eq.ready_to_send" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?psid=eq.{psid}&status=eq.ready_to_send"
         headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
         
+        # 1. Try exact PSID match
+        url = f"{base}/bookings?psid=eq.{psid}&status=eq.ready_to_send" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?psid=eq.{psid}&status=eq.ready_to_send"
         r = requests.get(f"{url}&select=id,activity_logs", headers=headers, timeout=10)
-        if r.status_code == 200 and r.json():
-            for row in r.json():
-                b_id = row['id']
-                logs = row.get('activity_logs') or []
-                new_log = {"action": "completed", "by": "ระบบอัตโนมัติ (แอดมินพิมพ์ #จัดส่งสำเร็จ)", "timestamp": datetime.utcnow().isoformat() + "Z"}
-                payload = {"status": "completed", "activity_logs": logs + [new_log]}
-                update_url = f"{base}/bookings?id=eq.{b_id}" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?id=eq.{b_id}"
-                requests.patch(update_url, headers=headers, json=payload, timeout=10)
-                print(f"✅ [FORCE COMPLETE] PSID={psid} Booking={b_id}")
+        found_rows = r.json() if r.status_code == 200 else []
+        
+        # 2. Fallback: Lookup by Name using Graph API if no exact PSID match (handles ASID vs PSID mismatch)
+        if not found_rows and page_id:
+            token = get_page_token(page_id)
+            if token:
+                fb_url = f"https://graph.facebook.com/v19.0/{psid}?fields=first_name,last_name&access_token={token}"
+                fb_res = requests.get(fb_url, timeout=10)
+                if fb_res.status_code == 200:
+                    fb_data = fb_res.json()
+                    fname = fb_data.get("first_name", "").lower()
+                    lname = fb_data.get("last_name", "").lower()
+                    
+                    if fname or lname:
+                        search_url = f"{base}/bookings?status=eq.ready_to_send&select=id,activity_logs,customer_name,facebook,person1_name" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?status=eq.ready_to_send&select=id,activity_logs,customer_name,facebook,person1_name"
+                        all_res = requests.get(search_url, headers=headers, timeout=10)
+                        if all_res.status_code == 200:
+                            for row in all_res.json():
+                                c_name = (row.get('customer_name') or '').lower()
+                                f_name = (row.get('facebook') or '').lower()
+                                p_name = (row.get('person1_name') or '').lower()
+                                
+                                # Match if first_name OR last_name is in any of the names
+                                if (fname and (fname in c_name or fname in f_name or fname in p_name)) or \
+                                   (lname and (lname in c_name or lname in f_name or lname in p_name)):
+                                    found_rows.append(row)
+        
+        # 3. Process completion
+        for row in found_rows:
+            b_id = row['id']
+            logs = row.get('activity_logs') or []
+            new_log = {"action": "completed", "by": "ระบบอัตโนมัติ (แอดมินพิมพ์ #จัดส่ง)", "timestamp": datetime.utcnow().isoformat() + "Z"}
+            payload = {"status": "completed", "activity_logs": logs + [new_log]}
+            update_url = f"{base}/bookings?id=eq.{b_id}" if base.endswith("/rest/v1") else f"{base}/rest/v1/bookings?id=eq.{b_id}"
+            requests.patch(update_url, headers=headers, json=payload, timeout=10)
+            print(f"✅ [FORCE COMPLETE] PSID={psid} Booking={b_id}")
     except Exception as e:
         print(f"❌ [FORCE COMPLETE ERROR] {e}")
 
@@ -578,7 +605,7 @@ def webhook():
                 print(f"✅ [DETECTED COMMAND] target={target_id} text contains closing tag")
                 threading.Thread(
                     target=force_complete_booking_by_psid,
-                    args=(target_id,),
+                    args=(target_id, page_id),
                     daemon=True
                 ).start()
                 continue
