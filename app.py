@@ -46,10 +46,10 @@ FILES_LOADED = False
 LAST_CACHE_REFRESH = 0
 lock = threading.Lock()
 
-# --- 📂 2. GITHUB FILES ---
+# --- [FILE] 2. GITHUB FILES ---
 def update_file_list():
     global CACHED_FILES, TOTAL_IMAGES_SIZE, FILES_LOADED
-    print("🔄 Updating image list from GitHub...")
+    print("[SYNC] Updating image list from GitHub...")
     headers = {"User-Agent": "Siamganesh-Bot", "Accept": "application/vnd.github.v3+json"}
     if GITHUB_TOKEN:
         headers["Authorization"] = f"token {GITHUB_TOKEN}"
@@ -77,7 +77,7 @@ def update_file_list():
 def get_image_url(page, filename):
     return f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{REPO_NAME}/{BRANCH}/images/{page}/{filename}"
 
-# --- 💬 3. FACEBOOK TOOLS ---
+# --- [FB] 3. FACEBOOK TOOLS ---
 def get_page_token(page_id):
     if str(page_id) == str(MAHABUCHA_PAGE_ID): return MAHABUCHA_TOKEN
     if str(page_id) == str(MUTETEAM_PAGE_ID):  return MUTETEAM_TOKEN
@@ -129,7 +129,7 @@ def send_fb_action(recipient_id, page_id, data_type, payload):
                 err_msg = r3.json().get("error", {}).get("message", r3.text[:100]) if "error" in r3.text else r3.text[:100]
                 return False, f"FB Error {r3.status_code}: {err_msg}"
 
-# --- 🧠 4. MESSAGE PROCESSOR ---
+# --- [PROCESS] 4. MESSAGE PROCESSOR ---
 
 def get_booking_by_code(booking_code, owner):
     if not SUPABASE_URL or not SUPABASE_KEY: return None
@@ -254,8 +254,8 @@ def generate_thank_you_message(booking_code, person1_name=None, person2_name=Non
         if person2_name:
             names = f"{person1_name}และ{person2_name}"
         return (
-            f"📸 ขออนุญาตส่งมอบความสิริมงคลแด่คุณ{names}ครับ "
-            f"ร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ 'มูเตทีม' นะครับ 🙏✨"
+            f"[PHOTO] ขออนุญาตส่งมอบความสิริมงคลแด่คุณ{names}ครับ "
+            f"ร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ 'มูเตทีม' นะครับ "
         )
 
     if not GEMINI_API_KEY:
@@ -277,7 +277,7 @@ def generate_thank_you_message(booking_code, person1_name=None, person2_name=Non
         "- บอกว่ากำลังส่งภาพจากพิธีกรรม\n"
         "- แนะนำให้ติดตามเพจ มูเตทีม\n"
         "- ความยาว 2-3 ประโยค ไม่ยาวเกินไป\n"
-        "- ลงท้ายด้วย 🙏✨\n"
+        "- ลงท้ายด้วย \n"
         "- ตอบเฉพาะข้อความที่จะส่ง ไม่ต้องมีคำอธิบายเพิ่มเติม"
     )
 
@@ -345,8 +345,8 @@ def process_mahabucha(target_id, text, page_id):
 
     if found_imgs:
         intro = (
-            "📸 ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่าย ที่ใช้ในงานพิธีในครั้งนี้ครับ\n\n"
-            "ร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"มหาบูชา\" นะครับ 🙏✨"
+            "[PHOTO] ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่าย ที่ใช้ในงานพิธีในครั้งนี้ครับ\n\n"
+            "ร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"มหาบูชา\" นะครับ "
         )
         send_fb_action(target_id, page_id, "text", intro)
         for code_key, filename in found_imgs:
@@ -478,7 +478,7 @@ def process_muteteam(target_id, text, page_id):
                     "ขณะนี้คณะทีมงานยังอยู่ระหว่างดำเนินการนำถาดถวายของท่าน\n"
                     "เข้าสู่พิธีกรรมอย่างเป็นขั้นตอนครับ\n\n"
                     "รบกวนรอทีมงานนำฝากถวายให้แล้วเสร็จ\n"
-                    "แล้วท่านจะได้รับภาพเป็นที่ระลึกจากพิธีนะครับ 🙏✨"
+                    "แล้วท่านจะได้รับภาพเป็นที่ระลึกจากพิธีนะครับ "
                 )
                 send_fb_action(target_id, page_id, "text", msg)
             else:
@@ -486,12 +486,12 @@ def process_muteteam(target_id, text, page_id):
 
 
 def process_message(target_id, text, page_id):
-    print(f"🧠 [PROCESS] page_id={page_id} | MAHABUCHA={MAHABUCHA_PAGE_ID} | MUTETEAM={MUTETEAM_PAGE_ID}")
+    print(f"[PROCESS] [PROCESS] page_id={page_id} | MAHABUCHA={MAHABUCHA_PAGE_ID} | MUTETEAM={MUTETEAM_PAGE_ID}")
     if str(page_id) == str(MAHABUCHA_PAGE_ID):
-        print("🔵 [ROUTE] → mahabucha")
+        print("[INFO] [ROUTE] → mahabucha")
         process_mahabucha(target_id, text, page_id)
     elif str(page_id) == str(MUTETEAM_PAGE_ID):
-        print("🟣 [ROUTE] → muteteam")
+        print("[INFO] [ROUTE] → muteteam")
         process_muteteam(target_id, text, page_id)
     else:
         print(f"❌ [ROUTE] page_id ไม่ตรงกับเพจใดเลย!")
@@ -501,7 +501,7 @@ def process_message(target_id, text, page_id):
 def verify():
     if request.args.get("hub.verify_token") == VERIFY_TOKEN:
         return request.args.get("hub.challenge"), 200
-    return "🟢 Siamganesh Online Backend is Live", 200
+    return "[OK] Siamganesh Online Backend is Live", 200
 
 @app.route('/', methods=['POST'])
 def webhook():
@@ -519,7 +519,7 @@ def webhook():
             metadata     = msg.get("metadata", "")
             is_echo      = msg.get("is_echo", False)
 
-            print(f"📩 [WEBHOOK] page={page_id} sender={sender_id} recipient={recipient_id} is_echo={is_echo} text='{text[:30]}'")
+            print(f"[MSG] [WEBHOOK] page={page_id} sender={sender_id} recipient={recipient_id} is_echo={is_echo} text='{text[:30]}'")
 
             # DEBUG LOG TO SUPABASE
             if is_echo and not metadata == "BOT_SENT_THIS":
@@ -551,7 +551,7 @@ def webhook():
                 continue
 
 
-            print(f"🚀 [DISPATCH] target={target_id} text='{text}'")
+            print(f"[DISPATCH] [DISPATCH] target={target_id} text='{text}'")
             threading.Thread(
                 target=process_message,
                 args=(target_id, text, page_id),
@@ -560,7 +560,7 @@ def webhook():
 
     return "ok", 200
 
-# --- 🔍 6. SEARCH API ---
+# --- [SEARCH] 6. SEARCH API ---
 @app.route('/api/search', methods=['GET'])
 def search_api():
     global FILES_LOADED
@@ -595,7 +595,7 @@ def search_api():
             }), 200
         return jsonify({"found": False, "message": "ไม่พบรูปภาพ"}), 404
 
-# --- 📂 6.5. LIST IMAGES API ---
+# --- [FILE] 6.5. LIST IMAGES API ---
 @app.route('/api/images', methods=['GET'])
 def list_images_api():
     global FILES_LOADED
@@ -634,13 +634,13 @@ def get_debug_webhook():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- 🔄 7. RELOAD CACHE API ---
+# --- [SYNC] 7. RELOAD CACHE API ---
 @app.route('/api/reload', methods=['POST'])
 def reload_cache():
     threading.Thread(target=update_file_list, daemon=True).start()
     return jsonify({"message": "กำลัง reload cache..."}), 200
 
-# --- 📤 8. UPLOAD IMAGE API ---
+# --- [UPLOAD] 8. UPLOAD IMAGE API ---
 @app.route('/api/upload-image', methods=['POST'])
 def upload_image():
     body = request.get_json(silent=True)
@@ -716,7 +716,7 @@ def upload_image():
         "message":  f"อัปโหลดสำเร็จ {len(uploaded)}/{len(images)} รูป",
     }), 200 if uploaded else 500
 
-# --- 📤 8.5. UPLOAD GITHUB RAW API ---
+# --- [UPLOAD] 8.5. UPLOAD GITHUB RAW API ---
 @app.route('/api/upload-github-raw', methods=['POST'])
 def upload_github_raw():
     body = request.get_json(silent=True)
@@ -783,7 +783,7 @@ def upload_github_raw():
         "message":  f"อัปโหลดสำเร็จ {len(uploaded)}/{len(images)} รูป",
     }), 200 if uploaded else 500
 
-# --- 🗑️ 9. DELETE IMAGE API ---
+# --- [DELETE] 9. DELETE IMAGE API ---
 @app.route('/api/delete-image', methods=['POST'])
 def delete_image():
     if not GITHUB_TOKEN:
@@ -839,7 +839,7 @@ def delete_image():
     else:
         return jsonify({"success": False, "message": msg}), 500
 
-# --- 💌 10. GENERATE THANK YOU MESSAGE API ---
+# --- [MAIL] 10. GENERATE THANK YOU MESSAGE API ---
 @app.route('/api/generate-message', methods=['GET'])
 def generate_message_api():
     booking_code = request.args.get('booking_code', '').strip()
@@ -858,7 +858,7 @@ def generate_message_api():
     }), 200
 
 
-# --- 🔧 DEBUG GEMINI ---
+# --- [DEBUG] DEBUG GEMINI ---
 @app.route('/api/debug-gemini', methods=['GET'])
 def debug_gemini():
     if not GEMINI_API_KEY:
@@ -890,7 +890,7 @@ def debug_gemini():
     except Exception as e:
         return jsonify({"error": str(e), "gemini_key_set": bool(GEMINI_API_KEY)}), 500
 
-# --- 📲 11. LINE NOTIFICATIONS ---
+# --- [NOTIFY] 11. LINE NOTIFICATIONS ---
 def get_line_token(owner):
     if owner == 'mahabucha' and LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA:
         return LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA
@@ -992,7 +992,7 @@ def notify_photo():
 
     page_name = "มหาบูชา" if owner == "mahabucha" else "มูเตทีม"
     text = (
-        f"🔔 [คิวปริ้นใหม่]\n"
+        f"[NOTIFY] [คิวปริ้นใหม่]\n"
         f"เพจ: {page_name}\n"
         f"วันที่: {date_str}\n"
         f"รหัสจอง: {booking_code}\n"
@@ -1150,7 +1150,7 @@ def system_status():
 
 update_file_list()
 
-# --- 📰 12. TRENDING NEWS SCHEDULER ---
+# --- [NEWS] 12. TRENDING NEWS SCHEDULER ---
 notified_news_links = set()
 
 def check_trending_news():
@@ -1230,11 +1230,11 @@ def check_trending_news():
             link = result.get("link")
             
             msg = (
-                f"🚨 [แจ้งเตือนกระแสสังคม]\n"
+                f"[ALERT] [แจ้งเตือนกระแสสังคม]\n"
                 f"พบข่าวที่น่าสนใจ ทำคอนเทนต์เพจ!\n\n"
-                f"📌 ข่าว: {title}\n"
-                f"🔗 แหล่งที่มา: {link}\n\n"
-                f"💡 แนะนำให้แอดมินนำไปปรับใช้โพสต์หน้าเพจ ส่งกำลังใจได้เลยครับ"
+                f"[PIN] ข่าว: {title}\n"
+                f"[LINK] แหล่งที่มา: {link}\n\n"
+                f"[HINT] แนะนำให้แอดมินนำไปปรับใช้โพสต์หน้าเพจ ส่งกำลังใจได้เลยครับ"
             )
             
             # Send to both groups
@@ -1248,13 +1248,13 @@ def check_trending_news():
     except Exception as e:
         print(f"❌ [NEWS] Error checking trending news: {e}")
 
-# --- 📰 13. DAILY EVENT SUMMARY SCHEDULER ---
+# --- [NEWS] 13. DAILY EVENT SUMMARY SCHEDULER ---
 def mahabucha_daily_summary():
     try:
         if not SUPABASE_URL or not SUPABASE_KEY:
             return
             
-        print("🕒 [SUMMARY] Running daily event summary check...")
+        print("[TIMER] [SUMMARY] Running daily event summary check...")
         base = SUPABASE_URL.rstrip("/")
         rest_base = base if base.endswith("/rest/v1") else f"{base}/rest/v1"
         headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
@@ -1267,7 +1267,7 @@ def mahabucha_daily_summary():
             
         setting_val = res_settings.json()[0].get("value", {})
         if not setting_val.get("enabled", False):
-            print("🕒 [SUMMARY] Daily summary for mahabucha is disabled.")
+            print("[TIMER] [SUMMARY] Daily summary for mahabucha is disabled.")
             return
             
         # 2. Get active events for mahabucha
@@ -1331,11 +1331,11 @@ def mahabucha_daily_summary():
             caption = ev.get("caption", "งานพิธีมหาบูชา")
             
             if is_final:
-                msg = f"🔔 สรุปผลปิดยอดงานพิธี {caption}\n📅 ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+                msg = f"[NOTIFY] สรุปผลปิดยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
             else:
-                msg = f"🔔 สรุปยอดงานพิธี {caption}\n📅 ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+                msg = f"[NOTIFY] สรุปยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
                 
-            msg += "[ 📈 ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
+            msg += "[ [TREND] ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
             today_total = 0
             for price in sorted(today_by_price.keys()):
                 c = today_by_price[price]
@@ -1343,7 +1343,7 @@ def mahabucha_daily_summary():
                 msg += f"- แบบ {price} จำนวน +{c} ถาด\n"
             msg += f"รวมเพิ่มวันนี้ +{today_total} ถาด\n\n"
             
-            msg += "[ 📊 ยอดรวมสะสมทั้งหมด ]\n"
+            msg += "[ [STATS] ยอดรวมสะสมทั้งหมด ]\n"
             overall_total = 0
             for price in sorted(total_by_price.keys()):
                 c = total_by_price[price]
@@ -1352,7 +1352,7 @@ def mahabucha_daily_summary():
             msg += f"✅ รวมสะสมทั้งหมด {overall_total} ถาด\n\n"
             
             if is_final:
-                msg += "🙏 สิ้นสุดการรับจองและปิดยอดสำหรับงานพิธีนี้เรียบร้อยครับ"
+                msg += " สิ้นสุดการรับจองและปิดยอดสำหรับงานพิธีนี้เรียบร้อยครับ"
                 
             # Send via Line
             send_line_notification("mahabucha", msg)
@@ -1361,10 +1361,10 @@ def mahabucha_daily_summary():
     except Exception as e:
         print(f"❌ [SUMMARY] Error in daily event summary: {e}")
 
-# --- 📊 14. MUTETEAM MONTHLY SUMMARY SCHEDULER ---
+# --- [STATS] 14. MUTETEAM MONTHLY SUMMARY SCHEDULER ---
 def muteteam_monthly_summary():
     try:
-        print("🕒 [SUMMARY] Running monthly summary check for muteteam...")
+        print("[TIMER] [SUMMARY] Running monthly summary check for muteteam...")
         base = SUPABASE_URL.rstrip("/")
         rest_base = base if base.endswith("/rest/v1") else f"{base}/rest/v1"
         headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
@@ -1377,7 +1377,7 @@ def muteteam_monthly_summary():
             
         setting_val = res_settings.json()[0].get("value", {})
         if not setting_val.get("enabled", False):
-            print("🕒 [SUMMARY] Monthly summary for muteteam is disabled.")
+            print("[TIMER] [SUMMARY] Monthly summary for muteteam is disabled.")
             return
 
         tz = timezone(timedelta(hours=7))
@@ -1416,9 +1416,9 @@ def muteteam_monthly_summary():
         month_name = months_th[now.month]
         year_th = now.year + 543
 
-        msg = f"🔔 สรุปยอดฝากถวายประจำเดือน {month_name} {year_th}\nเพจ: มูเตทีม\n\n"
+        msg = f"[NOTIFY] สรุปยอดฝากถวายประจำเดือน {month_name} {year_th}\nเพจ: มูเตทีม\n\n"
         
-        msg += "[ 📈 ยอดจองใหม่ในเดือนนี้ ]\n"
+        msg += "[ [TREND] ยอดจองใหม่ในเดือนนี้ ]\n"
         month_total = 0
         for price in sorted(month_by_price.keys()):
             c = month_by_price[price]
@@ -1426,7 +1426,7 @@ def muteteam_monthly_summary():
             msg += f"- แบบ {price} จำนวน {c} ถาด\n"
         msg += f"รวมยอดใหม่เดือนนี้ {month_total} ถาด\n\n"
         
-        msg += "[ 📊 ยอดรวมสะสมทั้งหมด (ตั้งแต่เริ่มต้น) ]\n"
+        msg += "[ [STATS] ยอดรวมสะสมทั้งหมด (ตั้งแต่เริ่มต้น) ]\n"
         overall_total = 0
         for price in sorted(total_by_price.keys()):
             c = total_by_price[price]
@@ -1441,7 +1441,7 @@ def muteteam_monthly_summary():
     except Exception as e:
         print(f"❌ [SUMMARY] Error in muteteam monthly summary: {e}")
 
-# --- 📸 SERVER AI OCR ---
+# --- [PHOTO] SERVER AI OCR ---
 @app.route('/api/ocr-image', methods=['POST'])
 def ocr_image():
     if not GEMINI_API_KEY:
