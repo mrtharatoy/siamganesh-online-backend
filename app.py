@@ -999,7 +999,7 @@ def notify_photo():
     months_th = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
     date_str = f"{now_th.day} {months_th[now_th.month]} {now_th.year + 543} เวลา {now_th.strftime('%H:%M')} น."
 
-    page_name = "มหาบูชา" if owner == "mahabucha" else "มูเตทีม"
+    page_name = "มหาบูชา" if owner == "mahabucha" else ("มูเตทีม (งานพิธี)" if owner == "muteteam_ceremony" else "มูเตทีม")
     text = (
         f"[NOTIFY] [คิวปริ้นใหม่]\n"
         f"เพจ: {page_name}\n"
