@@ -344,8 +344,10 @@ def process_ceremony_flow(target_id, text, page_id, owner_key):
     if found_imgs:
         page_name = "มหาบูชา" if owner_key == "mahabucha" else "มูเตทีม"
         intro = (
-            "[PHOTO] ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่าย ที่ใช้ในงานพิธีในครั้งนี้ครับ\n\n"
-            f"ร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"{page_name}\" นะครับ "
+            "[PHOTO] 📸 ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่าย ที่ใช้ในงานพิธีในครั้งนี้ครับ\n\n"
+            f"ร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"{page_name}\" นะครับ 🙏✨\n\n"
+            "//แอดมิน\n"
+            "ทอย ธราธร สยามคเณศ"
         )
         send_fb_action(target_id, page_id, "text", intro)
         for code_key, filename in found_imgs:
