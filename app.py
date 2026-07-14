@@ -1001,7 +1001,7 @@ def notify_photo():
 
     page_name = "มหาบูชา" if owner == "mahabucha" else ("มูเตทีม (งานพิธี)" if owner == "muteteam_ceremony" else "มูเตทีม")
     text = (
-        f"[NOTIFY] [คิวปริ้นใหม่]\n"
+        f"🔔 [คิวปริ้นใหม่]\n"
         f"เพจ: {page_name}\n"
         f"วันที่: {date_str}\n"
         f"รหัสจอง: {booking_code}\n"
@@ -1340,11 +1340,11 @@ def mahabucha_daily_summary():
             caption = ev.get("caption", "งานพิธีมหาบูชา")
             
             if is_final:
-                msg = f"[NOTIFY] สรุปผลปิดยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+                msg = f"🔔 สรุปผลปิดยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
             else:
-                msg = f"[NOTIFY] สรุปยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+                msg = f"🔔 สรุปยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
                 
-            msg += "[ [TREND] ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
+            msg += "[ 📈 ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
             today_total = 0
             for price in sorted(today_by_price.keys()):
                 c = today_by_price[price]
@@ -1352,7 +1352,7 @@ def mahabucha_daily_summary():
                 msg += f"- แบบ {price} จำนวน +{c} ถาด\n"
             msg += f"รวมเพิ่มวันนี้ +{today_total} ถาด\n\n"
             
-            msg += "[ [STATS] ยอดรวมสะสมทั้งหมด ]\n"
+            msg += "[ 📊 ยอดรวมสะสมทั้งหมด ]\n"
             overall_total = 0
             for price in sorted(total_by_price.keys()):
                 c = total_by_price[price]
@@ -1454,11 +1454,11 @@ def muteteam_ceremony_daily_summary():
             caption = ev.get("caption", "มูเตทีม (งานพิธี)")
             
             if is_final:
-                msg = f"[NOTIFY] สรุปผลปิดยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+                msg = f"🔔 สรุปผลปิดยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
             else:
-                msg = f"[NOTIFY] สรุปยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+                msg = f"🔔 สรุปยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
                 
-            msg += "[ [TREND] ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
+            msg += "[ 📈 ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
             today_total = 0
             for price in sorted(today_by_price.keys()):
                 c = today_by_price[price]
@@ -1466,7 +1466,7 @@ def muteteam_ceremony_daily_summary():
                 msg += f"- แบบ {price} จำนวน +{c} ถาด\n"
             msg += f"รวมเพิ่มวันนี้ +{today_total} ถาด\n\n"
             
-            msg += "[ [STATS] ยอดรวมสะสมทั้งหมด ]\n"
+            msg += "[ 📊 ยอดรวมสะสมทั้งหมด ]\n"
             overall_total = 0
             for price in sorted(total_by_price.keys()):
                 c = total_by_price[price]
@@ -1539,9 +1539,9 @@ def muteteam_monthly_summary():
         month_name = months_th[now.month]
         year_th = now.year + 543
 
-        msg = f"[NOTIFY] สรุปยอดฝากถวายประจำเดือน {month_name} {year_th}\nเพจ: มูเตทีม\n\n"
+        msg = f"🔔 สรุปยอดฝากถวายประจำเดือน {month_name} {year_th}\nเพจ: มูเตทีม\n\n"
         
-        msg += "[ [TREND] ยอดจองใหม่ในเดือนนี้ ]\n"
+        msg += "[ 📈 ยอดจองใหม่ในเดือนนี้ ]\n"
         month_total = 0
         for price in sorted(month_by_price.keys()):
             c = month_by_price[price]
@@ -1549,7 +1549,7 @@ def muteteam_monthly_summary():
             msg += f"- แบบ {price} จำนวน {c} ถาด\n"
         msg += f"รวมยอดใหม่เดือนนี้ {month_total} ถาด\n\n"
         
-        msg += "[ [STATS] ยอดรวมสะสมทั้งหมด (ตั้งแต่เริ่มต้น) ]\n"
+        msg += "[ 📊 ยอดรวมสะสมทั้งหมด (ตั้งแต่เริ่มต้น) ]\n"
         overall_total = 0
         for price in sorted(total_by_price.keys()):
             c = total_by_price[price]
