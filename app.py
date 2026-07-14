@@ -40,8 +40,8 @@ LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM  = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_
 LINE_GROUP_ID_MAHABUCHA   = os.environ.get('LINE_GROUP_ID_MAHABUCHA')
 LINE_GROUP_ID_MUTETEAM    = os.environ.get('LINE_GROUP_ID_MUTETEAM')
 
-CACHED_FILES = {"mahabucha": {}, "muteteam": {}}
-TOTAL_IMAGES_SIZE = {"mahabucha": 0, "muteteam": 0}
+CACHED_FILES = {"mahabucha": {}, "muteteam": {}, "muteteam_ceremony": {}}
+TOTAL_IMAGES_SIZE = {"mahabucha": 0, "muteteam": 0, "muteteam_ceremony": 0}
 FILES_LOADED = False
 LAST_CACHE_REFRESH = 0
 lock = threading.Lock()
@@ -54,7 +54,7 @@ def update_file_list():
     if GITHUB_TOKEN:
         headers["Authorization"] = f"token {GITHUB_TOKEN}"
 
-    for page in ["mahabucha", "muteteam"]:
+    for page in ["mahabucha", "muteteam", "muteteam_ceremony"]:
         api_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/images/{page}?ref={BRANCH}"
         try:
             r = requests.get(api_url, headers=headers, timeout=15)
@@ -306,13 +306,13 @@ def generate_thank_you_message(booking_code, person1_name=None, person2_name=Non
     return fallback()
 
 
-def process_mahabucha(target_id, text, page_id):
+def process_ceremony_flow(target_id, text, page_id, owner_key):
     pattern_regex = r'(?<!\d)\d+\s*[a-z]{2}\s*\d+(?!\d)'
     matches       = re.findall(pattern_regex, text.lower())
     valid_codes   = [m.replace(" ", "").replace("\n", "") for m in matches]
 
     if not valid_codes:
-        return
+        return False
 
     global LAST_CACHE_REFRESH
     if not FILES_LOADED:
@@ -321,7 +321,7 @@ def process_mahabucha(target_id, text, page_id):
                 update_file_list()
                 LAST_CACHE_REFRESH = time.time()
 
-    current_cache = CACHED_FILES["mahabucha"]
+    current_cache = CACHED_FILES[owner_key]
     
     missing_codes = [c for c in valid_codes if c not in current_cache]
     if missing_codes and (time.time() - LAST_CACHE_REFRESH > 10):
@@ -330,9 +330,7 @@ def process_mahabucha(target_id, text, page_id):
                 print(f"Refreshing cache because codes were not found: {missing_codes}")
                 update_file_list()
                 LAST_CACHE_REFRESH = time.time()
-                current_cache = CACHED_FILES["mahabucha"]
-
-    # Removed empty folder check to allow auto-reply to trigger
+                current_cache = CACHED_FILES[owner_key]
 
     found_imgs    = []
     unknown_codes = []
@@ -344,16 +342,17 @@ def process_mahabucha(target_id, text, page_id):
             unknown_codes.append(code)
 
     if found_imgs:
+        page_name = "มหาบูชา" if owner_key == "mahabucha" else "มูเตทีม"
         intro = (
             "[PHOTO] ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่าย ที่ใช้ในงานพิธีในครั้งนี้ครับ\n\n"
-            "ร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"มหาบูชา\" นะครับ "
+            f"ร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"{page_name}\" นะครับ "
         )
         send_fb_action(target_id, page_id, "text", intro)
         for code_key, filename in found_imgs:
             send_fb_action(target_id, page_id, "text", f"ภาพถาดถวาย รหัส : {code_key.upper()}")
-            success, err_msg = send_fb_action(target_id, page_id, "image", get_image_url("mahabucha", filename))
+            success, err_msg = send_fb_action(target_id, page_id, "image", get_image_url(owner_key, filename))
             
-            booking = get_booking_by_code(code_key, "mahabucha")
+            booking = get_booking_by_code(code_key, owner_key)
             if booking:
                 if success:
                     update_booking_auto_reply_log(booking['id'], booking.get('activity_logs'), "completed")
@@ -361,12 +360,17 @@ def process_mahabucha(target_id, text, page_id):
                     update_booking_auto_reply_log(booking['id'], booking.get('activity_logs'), booking.get('status'), err_msg)
 
     if unknown_codes:
-        setting = get_system_setting("auto_reply_not_found", {"mahabucha": True})
-        if setting.get("mahabucha", True):
+        setting = get_system_setting("auto_reply_not_found", {owner_key: True})
+        if setting.get(owner_key, True):
             msg = "⚠️ ขออภัยครับ \n\nไม่พบภาพถาดถวายจากรหัสของท่าน \n\nรบกวนรอแอดมินเข้ามาตรวจสอบให้ซักครู่นะครับ ⏳"
             send_fb_action(target_id, page_id, "text", msg)
         else:
-            print(f"⏭️ [SKIP] Missing images for Mahabucha codes: {unknown_codes}. Passing silently due to setting.")
+            print(f"⏭️ [SKIP] Missing images for {owner_key} codes: {unknown_codes}. Passing silently due to setting.")
+
+    return True
+
+def process_mahabucha(target_id, text, page_id):
+    process_ceremony_flow(target_id, text, page_id, "mahabucha")
 
 
 def check_and_send_catalog_codes(target_id, text, page_id):
@@ -419,6 +423,9 @@ def check_and_send_catalog_codes(target_id, text, page_id):
 
 
 def process_muteteam(target_id, text, page_id):
+    if process_ceremony_flow(target_id, text, page_id, "muteteam_ceremony"):
+        return
+
     pattern_regex = r'(?<!\d)(?:(?:\d\s*){12})(?!\d)'
     matches       = re.findall(pattern_regex, text)
     valid_codes   = [m.replace(" ", "").replace("\n", "") for m in matches]
@@ -567,7 +574,7 @@ def search_api():
     page = request.args.get('page', '').lower()
     code = request.args.get('code', '').lower().strip()
 
-    if page not in ["mahabucha", "muteteam"] or not code:
+    if page not in ["mahabucha", "muteteam", "muteteam_ceremony"] or not code:
         return jsonify({"found": False, "message": "ข้อมูลไม่ครบ"}), 400
 
     if not FILES_LOADED:
@@ -601,7 +608,7 @@ def list_images_api():
     global FILES_LOADED
     page = request.args.get('page', '').lower()
 
-    if page not in ["mahabucha", "muteteam"]:
+    if page not in ["mahabucha", "muteteam", "muteteam_ceremony"]:
         return jsonify({"success": False, "message": "ระบุ page ไม่ถูกต้อง"}), 400
 
     if not FILES_LOADED:
@@ -796,7 +803,7 @@ def delete_image():
     page     = body.get("page", "").lower().strip()
     filename = body.get("filename", "").strip()
 
-    if page not in ["mahabucha", "muteteam"] or not filename:
+    if page not in ["mahabucha", "muteteam", "muteteam_ceremony"] or not filename:
         return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
 
     headers = {
@@ -894,7 +901,7 @@ def debug_gemini():
 def get_line_token(owner):
     if owner == 'mahabucha' and LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA:
         return LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA
-    if owner == 'muteteam' and LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM:
+    if owner in ['muteteam', 'muteteam_ceremony'] and LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM:
         return LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM
     return LINE_CHANNEL_ACCESS_TOKEN
 
