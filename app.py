@@ -520,7 +520,11 @@ def webhook():
 
     for entry in data.get("entry", []):
         page_id = str(entry.get("id", ""))
-        for event in entry.get("messaging", []):
+        
+        # Merge messaging and standby events for Handover Protocol
+        events = entry.get("messaging", []) + entry.get("standby", [])
+        
+        for event in events:
             sender_id    = event.get("sender", {}).get("id")
             recipient_id = event.get("recipient", {}).get("id")
             msg          = event.get("message", {})
