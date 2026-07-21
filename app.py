@@ -50,12 +50,17 @@ lock = threading.Lock()
 def update_file_list():
     global CACHED_FILES, TOTAL_IMAGES_SIZE, FILES_LOADED
     print("[SYNC] Updating image list from GitHub...")
-    headers = {"User-Agent": "Siamganesh-Bot", "Accept": "application/vnd.github.v3+json"}
+    headers = {
+        "User-Agent": "Siamganesh-Bot", 
+        "Accept": "application/vnd.github.v3+json",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache"
+    }
     if GITHUB_TOKEN:
         headers["Authorization"] = f"token {GITHUB_TOKEN}"
 
     for page in ["mahabucha", "muteteam", "muteteam_ceremony"]:
-        api_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/images/{page}?ref={BRANCH}"
+        api_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/images/{page}?ref={BRANCH}&t={int(time.time())}"
         try:
             r = requests.get(api_url, headers=headers, timeout=15)
             if r.status_code == 200:
