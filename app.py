@@ -323,11 +323,17 @@ def process_ceremony_flow(target_id, text, page_id, owner_key):
 
     current_cache = CACHED_FILES[owner_key]
     
-    missing_codes = [c for c in valid_codes if c not in current_cache]
-    if missing_codes and (time.time() - LAST_CACHE_REFRESH > 10):
+    missing_some = False
+    for code in set(valid_codes):
+        matched = [k for k in current_cache.keys() if k.startswith(code)]
+        if not matched:
+            missing_some = True
+            break
+            
+    if missing_some and (time.time() - LAST_CACHE_REFRESH > 10):
         with lock:
             if time.time() - LAST_CACHE_REFRESH > 10:
-                print(f"Refreshing cache because codes were not found: {missing_codes}")
+                print(f"Refreshing cache because ceremony codes were not found")
                 update_file_list()
                 LAST_CACHE_REFRESH = time.time()
                 current_cache = CACHED_FILES[owner_key]
@@ -335,9 +341,17 @@ def process_ceremony_flow(target_id, text, page_id, owner_key):
     found_imgs    = []
     unknown_codes = []
 
-    for code in valid_codes:
-        if code in current_cache:
-            found_imgs.append((code, current_cache[code]))
+    for code in set(valid_codes):
+        matched_files = [
+            (key, filename)
+            for key, filename in current_cache.items()
+            if key.startswith(code)
+        ]
+        matched_files.sort(key=lambda x: x[0])
+        
+        if matched_files:
+            for key, filename in matched_files:
+                found_imgs.append((code, filename))
         else:
             unknown_codes.append(code)
 
