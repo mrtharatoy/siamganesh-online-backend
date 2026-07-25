@@ -15,7 +15,19 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+
+# จำกัดโดเมนที่อนุญาตให้เรียก API นี้ได้ ตั้งค่าผ่าน env var ALLOWED_ORIGINS
+# (คั่นด้วยจุลภาค เช่น "https://siamganesh.com,https://admin.siamganesh.com")
+# ถ้าไม่ตั้งค่าไว้ จะ fallback เป็น "*" ชั่วคราว พร้อม warning เตือนให้ตั้งค่าจริงก่อนขึ้น production
+_allowed_origins_env = os.environ.get('ALLOWED_ORIGINS', '').strip()
+if _allowed_origins_env:
+    ALLOWED_ORIGINS = [o.strip() for o in _allowed_origins_env.split(',') if o.strip()]
+else:
+    ALLOWED_ORIGINS = "*"
+    print("⚠️  WARNING: ALLOWED_ORIGINS ไม่ได้ตั้งค่า — CORS เปิดรับทุกโดเมนชั่วคราว "
+          "กรุณาตั้งค่า ALLOWED_ORIGINS ก่อนใช้งานจริง (production)")
+
+CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
 
 SERVER_START_TIME = datetime.now()
 
@@ -36,7 +48,7 @@ SUPABASE_KEY      = os.environ.get('SUPABASE_KEY')
 
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA') or os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM  = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM', "9sL5oVYE8cnPJGUL6tuDb8ZJ9MS2dk6ddZlrKLcY7SV5tYOBCLp3Cx0wCL/VJhmG7pA2f2EEmcs4UFfkCKjqfMgP7ViSBRVdbjxO/Ad//nrW6WxURrj0JdNVZuzzRdLOmiQ1MX8YNlncQJC2165FrgdB04t89/1O/w1cDnyilFU=")
+LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM  = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM') or os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_GROUP_ID_MAHABUCHA   = os.environ.get('LINE_GROUP_ID_MAHABUCHA')
 LINE_GROUP_ID_MUTETEAM    = os.environ.get('LINE_GROUP_ID_MUTETEAM')
 
