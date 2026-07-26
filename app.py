@@ -21,7 +21,10 @@ app = Flask(__name__)
 # ถ้าไม่ตั้งค่าไว้ จะ fallback เป็น "*" ชั่วคราว พร้อม warning เตือนให้ตั้งค่าจริงก่อนขึ้น production
 _allowed_origins_env = os.environ.get('ALLOWED_ORIGINS', '').strip()
 if _allowed_origins_env:
-    ALLOWED_ORIGINS = [o.strip() for o in _allowed_origins_env.split(',') if o.strip()]
+    # rstrip trailing "/" — browsers never include a trailing slash in the
+    # Origin header, so a misconfigured env var with one would silently
+    # block every real request's CORS check.
+    ALLOWED_ORIGINS = [o.strip().rstrip('/') for o in _allowed_origins_env.split(',') if o.strip()]
 else:
     ALLOWED_ORIGINS = "*"
     print("⚠️  WARNING: ALLOWED_ORIGINS ไม่ได้ตั้งค่า — CORS เปิดรับทุกโดเมนชั่วคราว "
