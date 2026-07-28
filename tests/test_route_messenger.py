@@ -109,7 +109,7 @@ def test_debug_webhook_returns_supabase_rows_when_configured(app_module, client)
 
     with mock.patch.object(messenger_blueprint, "SUPABASE_URL", "https://example.supabase.co"), \
          mock.patch.object(messenger_blueprint, "SUPABASE_KEY", "fake-key"), \
-         mock.patch("requests.get", return_value=fake_response):
+         mock.patch("core.clients.supabase_rest_client.requests.get", return_value=fake_response):
         resp = client.get("/api/debug-webhook")
 
     assert resp.status_code == 200

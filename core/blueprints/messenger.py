@@ -9,11 +9,11 @@ and core/clients/facebook_client.py since SG-B-102a).
 import threading
 from datetime import datetime
 
-import requests
 from flask import Blueprint, request, jsonify
 
 from config import VERIFY_TOKEN, SUPABASE_URL, SUPABASE_KEY, MAHABUCHA_PAGE_ID, MUTETEAM_PAGE_ID
 from core.clients.facebook_client import send_fb_action
+from core.clients.supabase_rest_client import get_debug_webhook as fetch_debug_webhook, upsert_debug_webhook
 from core.services.messenger_service import process_message
 
 messenger_bp = Blueprint("messenger", __name__)
@@ -54,14 +54,7 @@ def webhook():
             if is_echo and not metadata == "BOT_SENT_THIS":
                 try:
                     if SUPABASE_URL and SUPABASE_KEY:
-                        base = SUPABASE_URL.rstrip("/")
-                        url = f"{base}/system_settings" if base.endswith("/rest/v1") else f"{base}/rest/v1/system_settings"
-                        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
-                        debug_payload = {
-                            "id": "debug_webhook",
-                            "value": {"event": event, "time": datetime.utcnow().isoformat()}
-                        }
-                        requests.post(url, headers=headers, json=debug_payload, timeout=5)
+                        upsert_debug_webhook(SUPABASE_URL, SUPABASE_KEY, event, datetime.utcnow().isoformat())
                 except Exception as e:
                     print("Debug log error", e)
 
@@ -94,10 +87,7 @@ def webhook():
 def get_debug_webhook():
     if not SUPABASE_URL or not SUPABASE_KEY: return jsonify({"error": "no credentials"})
     try:
-        base = SUPABASE_URL.rstrip("/")
-        url = f"{base}/system_settings?id=eq.debug_webhook" if base.endswith("/rest/v1") else f"{base}/rest/v1/system_settings?id=eq.debug_webhook"
-        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
-        r = requests.get(url, headers=headers)
+        r = fetch_debug_webhook(SUPABASE_URL, SUPABASE_KEY)
         return jsonify(r.json()), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
