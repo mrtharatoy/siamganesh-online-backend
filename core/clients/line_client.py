@@ -57,3 +57,22 @@ def send_line_notification(owner, text):
     except Exception as e:
         print(f"❌ [LINE] Error sending notification: {e}")
         return False, str(e)
+
+
+def fetch_quota(token):
+    """Message quota usage/limit for a single channel token, or None if
+    no token or the LINE API call fails. Used by GET /api/line-quota."""
+    if not token:
+        return None
+    try:
+        h = {"Authorization": f"Bearer {token}"}
+        usage_res = requests.get("https://api.line.me/v2/bot/message/quota/consumption", headers=h, timeout=5)
+        limit_res = requests.get("https://api.line.me/v2/bot/message/quota", headers=h, timeout=5)
+
+        usage = usage_res.json().get('totalUsage', 0) if usage_res.status_code == 200 else 0
+        limit_data = limit_res.json() if limit_res.status_code == 200 else {}
+        limit = limit_data.get('value', 0)
+
+        return {"usage": usage, "limit": limit}
+    except:
+        return None

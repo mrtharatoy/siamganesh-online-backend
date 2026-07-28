@@ -17,31 +17,15 @@ active handler (this file's line_quota) was carried over.
 """
 from datetime import datetime, timezone, timedelta
 
-import requests
 from flask import Blueprint, request, jsonify
 
-from core.clients.line_client import get_line_token, send_line_notification
+from core.clients.line_client import get_line_token, send_line_notification, fetch_quota
 
 notifications_bp = Blueprint("notifications", __name__)
 
 
 @notifications_bp.route('/api/line-quota', methods=['GET'])
 def line_quota():
-    def fetch_quota(token):
-        if not token: return None
-        try:
-            h = {"Authorization": f"Bearer {token}"}
-            usage_res = requests.get("https://api.line.me/v2/bot/message/quota/consumption", headers=h, timeout=5)
-            limit_res = requests.get("https://api.line.me/v2/bot/message/quota", headers=h, timeout=5)
-
-            usage = usage_res.json().get('totalUsage', 0) if usage_res.status_code == 200 else 0
-            limit_data = limit_res.json() if limit_res.status_code == 200 else {}
-            limit = limit_data.get('value', 0)
-
-            return {"usage": usage, "limit": limit}
-        except:
-            return None
-
     return jsonify({
         "muteteam": fetch_quota(get_line_token('muteteam')),
         "mahabucha": fetch_quota(get_line_token('mahabucha'))
