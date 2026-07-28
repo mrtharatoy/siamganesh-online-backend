@@ -7,16 +7,23 @@ Characterization tests for the image upload/delete routes:
 These routes call the real GitHub Contents API via `requests`. Every
 test here mocks `requests.get/put/delete` explicitly rather than
 relying on any live network access, per conftest.py's "no real network
-in tests" policy. GITHUB_TOKEN is unset in the test environment
-(conftest.py does not set it), so tests that need a token present
-patch it on core.blueprints.images (SG-B-103 -- where these routes now
-live and look the name up from), not on the app module.
+in tests" policy.
+
+Upload/delete orchestration moved to core/services/image_upload_service.py
+(SG-B-202). GITHUB_TOKEN and update_file_list must be patched there for
+anything exercising upload_image's per-image logic, upload_github_raw,
+or delete_image, since that module owns those lookups now -- the
+blueprint (core.blueprints.images) only still gates on its own
+GITHUB_TOKEN import for the early "no token at all" checks in
+upload_github_raw/delete_image, which were explicit guards in the
+original route code and stayed in the blueprint.
 """
 from unittest import mock
 
 import pytest
 
 import core.blueprints.images as images_blueprint
+import core.services.image_upload_service as image_upload_service
 
 
 @pytest.fixture
@@ -43,12 +50,12 @@ def test_upload_image_400_when_required_fields_missing(client):
 def test_upload_image_mahabucha_owner_always_counts_as_uploaded_without_github_call(client):
     # Documented quirk (API_BASELINE.md #7): owner != "muteteam" never
     # calls GitHub at all, but is still reported as a successful upload.
-    # "uploaded" is still non-empty here, so the route spawns a
+    # "uploaded" is still non-empty here, so the service spawns a
     # background thread calling update_file_list() -- patch it out so
     # that stray thread can't make a real GitHub API call and mutate
     # global CACHED_FILES/TOTAL_IMAGES_SIZE state for other tests.
     with mock.patch("requests.get") as mock_get, mock.patch("requests.put") as mock_put, \
-         mock.patch.object(images_blueprint, "update_file_list"):
+         mock.patch.object(image_upload_service, "update_file_list"):
         resp = client.post(
             "/api/upload-image",
             json={
@@ -69,7 +76,7 @@ def test_upload_image_mahabucha_owner_always_counts_as_uploaded_without_github_c
 def test_upload_image_muteteam_owner_without_github_token_uploads_nothing(client):
     # GITHUB_TOKEN is unset in the test env, so the "Skipped GitHub
     # upload (No Token)" branch is taken and nothing succeeds -> 500.
-    assert images_blueprint.GITHUB_TOKEN in (None, "")
+    assert image_upload_service.GITHUB_TOKEN in (None, "")
     resp = client.post(
         "/api/upload-image",
         json={
@@ -88,12 +95,12 @@ def test_upload_image_muteteam_owner_with_token_uploads_via_github(client):
     fake_get_response = mock.Mock(status_code=404)  # no existing file -> no sha
     fake_put_response = mock.Mock(status_code=201)
 
-    with mock.patch.object(images_blueprint, "GITHUB_TOKEN", "fake-token"), mock.patch(
+    with mock.patch.object(image_upload_service, "GITHUB_TOKEN", "fake-token"), mock.patch(
         "requests.get", return_value=fake_get_response
     ) as mock_get, mock.patch(
         "requests.put", return_value=fake_put_response
     ) as mock_put, mock.patch.object(
-        images_blueprint, "update_file_list"
+        image_upload_service, "update_file_list"
     ):
         resp = client.post(
             "/api/upload-image",
@@ -138,7 +145,7 @@ def test_upload_github_raw_success_with_token(client):
     with mock.patch.object(images_blueprint, "GITHUB_TOKEN", "fake-token"), mock.patch(
         "requests.get", return_value=fake_get_response
     ), mock.patch("requests.put", return_value=fake_put_response), mock.patch.object(
-        images_blueprint, "update_file_list"
+        image_upload_service, "update_file_list"
     ):
         resp = client.post(
             "/api/upload-github-raw",
@@ -176,7 +183,7 @@ def test_delete_image_success_when_file_exists(client):
     with mock.patch.object(images_blueprint, "GITHUB_TOKEN", "fake-token"), mock.patch(
         "requests.get", return_value=fake_get_response
     ), mock.patch("requests.delete", return_value=fake_delete_response), mock.patch.object(
-        images_blueprint, "update_file_list"
+        image_upload_service, "update_file_list"
     ):
         resp = client.post("/api/delete-image", json={"page": "muteteam", "filename": "a.jpg"})
 
