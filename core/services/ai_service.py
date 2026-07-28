@@ -3,9 +3,8 @@ Gemini-backed message generation, extracted from app.py (SG-B-102).
 Logic unchanged from the original app.py function of the same name --
 only the import source for GEMINI_API_KEY moved.
 """
-import requests
-
 from config import GEMINI_API_KEY
+from core.clients.gemini_client import generate_content
 
 
 def generate_thank_you_message(booking_code, person1_name=None, person2_name=None):
@@ -42,10 +41,6 @@ def generate_thank_you_message(booking_code, person1_name=None, person2_name=Non
     )
 
     try:
-        url = (
-            "https://generativelanguage.googleapis.com/v1/models"
-            f"/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-        )
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
@@ -53,7 +48,7 @@ def generate_thank_you_message(booking_code, person1_name=None, person2_name=Non
                 "maxOutputTokens": 300,
             },
         }
-        r = requests.post(url, json=payload, timeout=15)
+        r = generate_content("gemini-1.5-flash", payload, api_version="v1", timeout=15)
         if r.status_code == 200:
             msg = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
             print(f"Gemini msg for {booking_code}: {msg[:50]}...")

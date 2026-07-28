@@ -35,6 +35,7 @@ register_error_handlers(app)
 # update_file_list() is still called once below to warm the cache at
 # process startup, exactly as before.
 from core.services.image_cache_service import update_file_list
+from core.clients.gemini_client import generate_content
 
 # --- [FB] 3. FACEBOOK TOOLS (moved to core/clients/facebook_client.py, SG-B-102) ---
 # get_page_token/send_fb_action have no remaining direct callers in
@@ -135,12 +136,14 @@ def check_trending_news():
 }}
 ถ้าไม่มีข่าวที่เหมาะสมเลย ให้ตอบ {{"found": false}}
 """
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"responseMimeType": "application/json"}
         }
-        r = requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=30)
+        r = generate_content(
+            "gemini-1.5-flash", payload, api_version="v1beta", timeout=30,
+            headers={'Content-Type': 'application/json'},
+        )
         r.raise_for_status()
         
         data = r.json()

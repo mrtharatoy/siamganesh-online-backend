@@ -6,10 +6,10 @@ source moved (get_booking_names/generate_thank_you_message already
 extracted to core/repositories/booking_repository.py and
 core/services/ai_service.py since SG-B-102a).
 """
-import requests
 from flask import Blueprint, request, jsonify
 
 from config import GEMINI_API_KEY
+from core.clients.gemini_client import generate_content
 from core.repositories.booking_repository import get_booking_names
 from core.services.ai_service import generate_thank_you_message
 
@@ -45,15 +45,11 @@ def debug_gemini():
     prompt = f"สวัสดีครับ ช่วยสร้างข้อความขอบคุณสั้นๆ สำหรับคุณ{p1 or 'ผู้มีจิตศรัทธา'} ที่มาฝากถวายของกับเพจมูเตทีม"
 
     try:
-        url = (
-            "https://generativelanguage.googleapis.com/v1/models"
-            f"/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-        )
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.9, "maxOutputTokens": 200},
         }
-        r = requests.post(url, json=payload, timeout=15)
+        r = generate_content("gemini-1.5-flash", payload, api_version="v1", timeout=15)
         return jsonify({
             "status_code":    r.status_code,
             "gemini_key_set": bool(GEMINI_API_KEY),
@@ -85,7 +81,6 @@ def ocr_image():
                 mime_type = prefix.split("data:")[1].split(";base64")[0]
             base64_image = base64_image.split(",")[1]
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
         payload = {
             "contents": [
                 {
@@ -107,7 +102,7 @@ def ocr_image():
             }
         }
 
-        r = requests.post(url, json=payload, timeout=20)
+        r = generate_content("gemini-2.5-flash-lite", payload, api_version="v1beta", timeout=20)
         if r.status_code == 200:
             result_data = r.json()
             if "candidates" in result_data and len(result_data["candidates"]) > 0:

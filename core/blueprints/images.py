@@ -2,19 +2,19 @@
 Images blueprint (SG-B-103), extracted from app.py: `/api/images`,
 `/api/reload`, `/api/upload-image`, `/api/upload-github-raw`,
 `/api/delete-image`. Route logic is unchanged from the original
-app.py handlers of the same name -- only the import sources moved.
+app.py handlers of the same name.
 
-Unlike the messenger routes (SG-B-102), this business logic wasn't
-shared with any other route group, so it moves directly into the
-blueprint with no separate service/repository extraction step needed
-first.
+GitHub Contents API calls now go through core/clients/github_client.py
+(SG-B-201) instead of building requests inline -- get_file_sha() (no
+ref) for the upload routes and get_file_sha_at_ref() (with ref) for
+delete_image, matching each route's original existence-check exactly.
 """
 import threading
 
-import requests
 from flask import Blueprint, request, jsonify
 
-from config import GITHUB_USERNAME, REPO_NAME, BRANCH, GITHUB_TOKEN
+from config import BRANCH, GITHUB_TOKEN
+from core.clients.github_client import get_file_sha, get_file_sha_at_ref, put_file, delete_file
 from core.services.image_cache_service import CACHED_FILES, lock, is_loaded, update_file_list, get_image_url
 
 images_bp = Blueprint("images", __name__)
@@ -65,12 +65,6 @@ def upload_image():
     if not booking_code or not images:
         return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
 
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept":        "application/vnd.github.v3+json",
-        "User-Agent":    "Siamganesh-Bot",
-    }
-
     uploaded = []
     errors   = []
 
@@ -84,29 +78,15 @@ def upload_image():
 
         filename  = f"{booking_code}_{index}.{ext}"
         file_path = f"images/muteteam/{filename}"
-        api_url   = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}"
 
         if owner == "muteteam":
             if GITHUB_TOKEN:
-                sha = None
-                check = requests.get(api_url, headers=headers, timeout=10)
-                if check.status_code == 200:
-                    sha = check.json().get("sha")
-
-                payload = {
-                    "message": f"Upload photo: {filename}",
-                    "content": data_b64,
-                    "branch":  BRANCH,
-                }
-                if sha:
-                    payload["sha"] = sha
-
-                r = requests.put(api_url, headers=headers, json=payload, timeout=30)
-                if r.status_code in (200, 201):
+                sha = get_file_sha(file_path)
+                success, err = put_file(file_path, data_b64, f"Upload photo: {filename}", branch=BRANCH, sha=sha)
+                if success:
                     uploaded.append(filename)
                     print(f"OK Uploaded to GitHub: {filename}")
                 else:
-                    err = r.json().get("message", "unknown error")
                     errors.append(f"GitHub {filename}: {err}")
                     print(f"FAIL GitHub {filename}: {err}")
             else:
@@ -143,12 +123,6 @@ def upload_github_raw():
     if not GITHUB_TOKEN:
         return jsonify({"success": False, "message": "ไม่มี GITHUB_TOKEN"}), 500
 
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept":        "application/vnd.github.v3+json",
-        "User-Agent":    "Siamganesh-Bot",
-    }
-
     uploaded = []
     errors   = []
 
@@ -160,27 +134,13 @@ def upload_github_raw():
             continue
 
         file_path = f"images/{owner}/{filename}"
-        api_url   = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}"
 
-        sha = None
-        check = requests.get(api_url, headers=headers, timeout=10)
-        if check.status_code == 200:
-            sha = check.json().get("sha")
-
-        payload = {
-            "message": f"Upload raw photo: {filename}",
-            "content": data_b64,
-            "branch":  BRANCH,
-        }
-        if sha:
-            payload["sha"] = sha
-
-        r = requests.put(api_url, headers=headers, json=payload, timeout=30)
-        if r.status_code in (200, 201):
+        sha = get_file_sha(file_path)
+        success, err = put_file(file_path, data_b64, f"Upload raw photo: {filename}", branch=BRANCH, sha=sha)
+        if success:
             uploaded.append(filename)
             print(f"OK Uploaded RAW to GitHub: {filename}")
         else:
-            err = r.json().get("message", "unknown error")
             errors.append(f"GitHub {filename}: {err}")
             print(f"FAIL GitHub RAW {filename}: {err}")
 
@@ -210,40 +170,22 @@ def delete_image():
     if page not in ["mahabucha", "muteteam", "muteteam_ceremony"] or not filename:
         return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
 
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept":        "application/vnd.github.v3+json",
-        "User-Agent":    "Siamganesh-Bot",
-    }
-
     file_path = f"images/{page}/{filename}"
-    api_url   = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}?ref={BRANCH}"
-
-    check = requests.get(api_url, headers=headers, timeout=10)
+    sha, check_status = get_file_sha_at_ref(file_path, BRANCH)
 
     success = False
     msg = ""
 
-    if check.status_code == 200:
-        sha = check.json().get("sha")
-        payload = {
-            "message": f"Delete photo: {filename}",
-            "sha":     sha,
-            "branch":  BRANCH,
-        }
-        # URL for DELETE is the same but without ref parameter in path (pass it in body)
-        delete_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}"
-        r = requests.delete(delete_url, headers=headers, json=payload, timeout=30)
-
-        if r.status_code in (200, 201):
+    if sha is not None:
+        deleted, err = delete_file(file_path, sha, f"Delete photo: {filename}", branch=BRANCH)
+        if deleted:
             threading.Thread(target=update_file_list, daemon=True).start()
             success = True
             msg = "ลบไฟล์ออกจาก GitHub สำเร็จ"
         else:
-            err = r.json().get("message", "unknown error")
             msg = f"ลบไฟล์จาก GitHub ไม่สำเร็จ: {err}"
     else:
-        msg = f"ไม่พบไฟล์ใน GitHub หรือข้ามไป ({check.status_code})"
+        msg = f"ไม่พบไฟล์ใน GitHub หรือข้ามไป ({check_status})"
 
     if success:
         return jsonify({"success": True, "message": msg}), 200
