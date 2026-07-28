@@ -16,8 +16,10 @@ this app, not a behavior change introduced by this move. Only the
 active handler (this file's line_quota) was carried over.
 """
 from flask import Blueprint, request, jsonify
+from pydantic import ValidationError
 
 from core.clients.line_client import get_line_token, fetch_quota
+from core.schemas import NotifyPhotoBody
 from core.services.notification_service import notify_print_queue
 
 notifications_bp = Blueprint("notifications", __name__)
@@ -45,18 +47,17 @@ def line_webhook():
 @notifications_bp.route('/api/notify-photo', methods=['POST'])
 def notify_photo():
     data = request.json
-    owner = data.get('owner')
-    booking_code = data.get('booking_code')
-
-    if not owner or not booking_code:
+    try:
+        validated = NotifyPhotoBody(**data)
+    except ValidationError:
         return jsonify({"success": False, "message": "ข้อมูลไม่ครบถ้วน"}), 400
 
     success, err_msg = notify_print_queue(
-        owner, booking_code,
-        person1_name=data.get('person1_name'),
-        person2_name=data.get('person2_name'),
-        customer_name=data.get('customer_name'),
-        tray_count=data.get('tray_count', 0),
+        validated.owner, validated.booking_code,
+        person1_name=validated.person1_name,
+        person2_name=validated.person2_name,
+        customer_name=validated.customer_name,
+        tray_count=validated.tray_count,
     )
     if not success:
         return jsonify({"success": False, "error": err_msg}), 200

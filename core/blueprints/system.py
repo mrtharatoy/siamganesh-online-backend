@@ -14,7 +14,9 @@ avoid a circular import back to app.py (see git history for the
 SG-B-106 commit message for the full explanation of that pattern).
 """
 from flask import Blueprint, request, jsonify, current_app
+from pydantic import ValidationError
 
+from core.schemas import SearchQuery
 from core.services.image_cache_service import CACHED_FILES, lock, is_loaded, update_file_list, get_image_url
 from core.services.system_status_service import build_system_status
 
@@ -23,11 +25,11 @@ system_bp = Blueprint("system", __name__)
 
 @system_bp.route('/api/search', methods=['GET'])
 def search_api():
-    page = request.args.get('page', '').lower()
-    code = request.args.get('code', '').lower().strip()
-
-    if page not in ["mahabucha", "muteteam", "muteteam_ceremony"] or not code:
+    try:
+        query = SearchQuery(page=request.args.get('page', ''), code=request.args.get('code', ''))
+    except ValidationError:
         return jsonify({"found": False, "message": "ข้อมูลไม่ครบ"}), 400
+    page, code = query.page, query.code
 
     if not is_loaded():
         with lock:

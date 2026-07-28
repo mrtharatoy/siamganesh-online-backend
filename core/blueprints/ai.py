@@ -7,10 +7,12 @@ extracted to core/repositories/booking_repository.py and
 core/services/ai_service.py since SG-B-102a).
 """
 from flask import Blueprint, request, jsonify
+from pydantic import ValidationError
 
 from config import GEMINI_API_KEY
 from core.clients.gemini_client import generate_content
 from core.repositories.booking_repository import get_booking_names
+from core.schemas import GenerateMessageQuery, OcrImageBody
 from core.services.ai_service import generate_thank_you_message
 
 ai_bp = Blueprint("ai", __name__)
@@ -18,9 +20,11 @@ ai_bp = Blueprint("ai", __name__)
 
 @ai_bp.route('/api/generate-message', methods=['GET'])
 def generate_message_api():
-    booking_code = request.args.get('booking_code', '').strip()
-    if not booking_code:
+    try:
+        query = GenerateMessageQuery(booking_code=request.args.get('booking_code', ''))
+    except ValidationError:
         return jsonify({"success": False, "message": "กรุณาระบุ booking_code"}), 400
+    booking_code = query.booking_code
 
     p1, p2 = get_booking_names(booking_code)
     msg = generate_thank_you_message(booking_code, p1, p2)
@@ -67,12 +71,14 @@ def ocr_image():
     if not GEMINI_API_KEY:
         return jsonify({"error": "GEMINI_API_KEY is not configured"}), 500
 
+    data = request.get_json(silent=True)
     try:
-        data = request.get_json(silent=True)
-        if not data or not data.get("image"):
-            return jsonify({"error": "No image data provided"}), 400
+        body = OcrImageBody(image=(data or {}).get("image", ""))
+    except ValidationError:
+        return jsonify({"error": "No image data provided"}), 400
 
-        base64_image = data["image"]
+    try:
+        base64_image = body.image
         mime_type = "image/jpeg"
         # Remove prefix if present (e.g. data:image/png;base64,)
         if "," in base64_image:

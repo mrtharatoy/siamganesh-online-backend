@@ -11,8 +11,10 @@ just parse-request/call-service/map-response.
 import threading
 
 from flask import Blueprint, request, jsonify
+from pydantic import ValidationError
 
 from config import GITHUB_TOKEN
+from core.schemas import DeleteImageBody, ListImagesQuery, UploadGithubRawBody, UploadImageBody
 from core.services.image_cache_service import CACHED_FILES, lock, is_loaded, update_file_list, get_image_url
 from core.services.image_upload_service import upload_images_for_booking, upload_raw_images, delete_image_file
 
@@ -21,10 +23,11 @@ images_bp = Blueprint("images", __name__)
 
 @images_bp.route('/api/images', methods=['GET'])
 def list_images_api():
-    page = request.args.get('page', '').lower()
-
-    if page not in ["mahabucha", "muteteam", "muteteam_ceremony"]:
+    try:
+        query = ListImagesQuery(page=request.args.get('page', ''))
+    except ValidationError:
         return jsonify({"success": False, "message": "ระบุ page ไม่ถูกต้อง"}), 400
+    page = query.page
 
     if not is_loaded():
         with lock:
@@ -57,12 +60,11 @@ def upload_image():
     if not body:
         return jsonify({"success": False, "message": "ไม่มีข้อมูล"}), 400
 
-    booking_code = body.get("booking_code", "").strip()
-    images       = body.get("images", [])
-    owner        = body.get("owner", "muteteam").strip()
-
-    if not booking_code or not images:
+    try:
+        validated = UploadImageBody(**body)
+    except ValidationError:
         return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
+    booking_code, images, owner = validated.booking_code, validated.images, validated.owner
 
     result = upload_images_for_booking(booking_code, images, owner)
     return jsonify(result), 200 if result["success"] else 500
@@ -74,11 +76,11 @@ def upload_github_raw():
     if not body:
         return jsonify({"success": False, "message": "ไม่มีข้อมูล"}), 400
 
-    owner  = body.get("owner", "").strip()
-    images = body.get("images", [])
-
-    if not owner or not images:
+    try:
+        validated = UploadGithubRawBody(**body)
+    except ValidationError:
         return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
+    owner, images = validated.owner, validated.images
 
     if not GITHUB_TOKEN:
         return jsonify({"success": False, "message": "ไม่มี GITHUB_TOKEN"}), 500
@@ -96,11 +98,11 @@ def delete_image():
     if not body:
         return jsonify({"success": False, "message": "ไม่มีข้อมูล"}), 400
 
-    page     = body.get("page", "").lower().strip()
-    filename = body.get("filename", "").strip()
-
-    if page not in ["mahabucha", "muteteam", "muteteam_ceremony"] or not filename:
+    try:
+        validated = DeleteImageBody(**body)
+    except ValidationError:
         return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
+    page, filename = validated.page, validated.filename
 
     result = delete_image_file(page, filename)
     return jsonify(result), 200 if result["success"] else 500

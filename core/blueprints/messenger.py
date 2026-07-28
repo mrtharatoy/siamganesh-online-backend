@@ -10,10 +10,12 @@ import threading
 from datetime import datetime
 
 from flask import Blueprint, request, jsonify
+from pydantic import ValidationError
 
 from config import VERIFY_TOKEN, SUPABASE_URL, SUPABASE_KEY, MAHABUCHA_PAGE_ID, MUTETEAM_PAGE_ID
 from core.clients.facebook_client import send_fb_action
 from core.clients.supabase_rest_client import get_debug_webhook as fetch_debug_webhook, upsert_debug_webhook
+from core.schemas import SendFbMessageManualBody
 from core.services.messenger_service import process_message
 
 messenger_bp = Blueprint("messenger", __name__)
@@ -96,13 +98,11 @@ def get_debug_webhook():
 @messenger_bp.route('/api/send-fb-message-manual', methods=['POST'])
 def send_fb_message_manual():
     data = request.json
-    owner = data.get('owner')
-    psid = data.get('psid')
-    message = data.get('message')
-    images = data.get('images', [])
-
-    if not owner or not psid:
+    try:
+        validated = SendFbMessageManualBody(**data)
+    except ValidationError:
         return jsonify({"success": False, "error": "Missing owner or psid"}), 400
+    owner, psid, message, images = validated.owner, validated.psid, validated.message, validated.images
 
     page_id = MAHABUCHA_PAGE_ID if owner == "mahabucha" else MUTETEAM_PAGE_ID
 
