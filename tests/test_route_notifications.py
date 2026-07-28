@@ -1,19 +1,25 @@
 """
 Characterization tests for:
-  GET  /api/line-quota     (the ACTIVE handler at app.py line ~983 --
-                             see API_BASELINE.md #12 vs #15)
+  GET  /api/line-quota     (the ACTIVE handler -- see API_BASELINE.md
+                             #12 vs #15; the dead-code duplicate handler
+                             was dropped when moving to
+                             core/blueprints/notifications.py, SG-B-104)
   POST /api/line-webhook
   POST /api/notify-photo
 
-LINE_CHANNEL_ACCESS_TOKEN* and LINE_GROUP_ID_* are unset in the test
-environment, so send_line_notification()'s "missing token/group"
-guards are exercised by default without needing to mock anything. A
-success path is added for notify-photo by patching the relevant
-app_module constants and `requests.post`.
+get_line_token()/send_line_notification() moved to
+core/clients/line_client.py (SG-B-104), so LINE_CHANNEL_ACCESS_TOKEN*/
+LINE_GROUP_ID_* must be patched there -- that's the module those
+functions' own global lookups resolve against, not the app module
+(which only re-exports send_line_notification for the scheduler
+functions, not get_line_token or the LINE config constants at all
+anymore).
 """
 from unittest import mock
 
 import pytest
+
+import core.clients.line_client as line_client
 
 
 @pytest.fixture
@@ -25,7 +31,7 @@ def client(app_module):
 # --- GET /api/line-quota ---
 
 
-def test_line_quota_returns_null_for_both_owners_when_tokens_unset(app_module, client):
+def test_line_quota_returns_null_for_both_owners_when_tokens_unset(client):
     # LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA/MUTETEAM are unset in the test
     # env, so get_line_token() falls back to the base
     # LINE_CHANNEL_ACCESS_TOKEN, also unset -> fetch_quota's `if not
@@ -36,15 +42,15 @@ def test_line_quota_returns_null_for_both_owners_when_tokens_unset(app_module, c
     assert resp.get_json() == {"muteteam": None, "mahabucha": None}
 
 
-def test_line_quota_calls_line_api_when_token_present(app_module, client):
+def test_line_quota_calls_line_api_when_token_present(client):
     fake_usage_response = mock.Mock(status_code=200)
     fake_usage_response.json.return_value = {"totalUsage": 42}
     fake_limit_response = mock.Mock(status_code=200)
     fake_limit_response.json.return_value = {"value": 1000}
 
-    with mock.patch.object(app_module, "LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM", "muteteam-token"), \
-         mock.patch.object(app_module, "LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA", None), \
-         mock.patch.object(app_module, "LINE_CHANNEL_ACCESS_TOKEN", None), \
+    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM", "muteteam-token"), \
+         mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA", None), \
+         mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN", None), \
          mock.patch("requests.get", side_effect=[fake_usage_response, fake_limit_response]):
         resp = client.get("/api/line-quota")
 
@@ -80,7 +86,7 @@ def test_notify_photo_400_when_owner_or_booking_code_missing(client):
     assert resp.get_json() == {"success": False, "message": "ข้อมูลไม่ครบถ้วน"}
 
 
-def test_notify_photo_returns_200_with_success_false_when_line_send_fails(app_module, client):
+def test_notify_photo_returns_200_with_success_false_when_line_send_fails(client):
     # Documented quirk (API_BASELINE.md #14): a LINE send failure still
     # returns HTTP 200, just with success=False in the body. Tokens are
     # unset in the test env so this is the default path.
@@ -94,11 +100,11 @@ def test_notify_photo_returns_200_with_success_false_when_line_send_fails(app_mo
     assert "error" in body
 
 
-def test_notify_photo_success_path_sends_line_notification(app_module, client):
+def test_notify_photo_success_path_sends_line_notification(client):
     fake_response = mock.Mock(status_code=200)
 
-    with mock.patch.object(app_module, "LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA", "fake-token"), \
-         mock.patch.object(app_module, "LINE_GROUP_ID_MAHABUCHA", "fake-group"), \
+    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA", "fake-token"), \
+         mock.patch.object(line_client, "LINE_GROUP_ID_MAHABUCHA", "fake-group"), \
          mock.patch("requests.post", return_value=fake_response) as mock_post:
         resp = client.post(
             "/api/notify-photo",

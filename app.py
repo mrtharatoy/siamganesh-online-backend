@@ -16,9 +16,8 @@ from flask_cors import CORS
 
 from config import (
     GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY,
-    LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA,
-    LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM, LINE_GROUP_ID_MAHABUCHA,
-    LINE_GROUP_ID_MUTETEAM, ALLOWED_ORIGINS,
+    LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA, LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM,
+    ALLOWED_ORIGINS,
 )
 
 app = Flask(__name__)
@@ -181,138 +180,13 @@ def debug_gemini():
     except Exception as e:
         return jsonify({"error": str(e), "gemini_key_set": bool(GEMINI_API_KEY)}), 500
 
-# --- [NOTIFY] 11. LINE NOTIFICATIONS ---
-def get_line_token(owner):
-    if owner == 'mahabucha' and LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA:
-        return LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA
-    if owner in ['muteteam', 'muteteam_ceremony'] and LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM:
-        return LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM
-    return LINE_CHANNEL_ACCESS_TOKEN
-
-def send_line_notification(owner, text):
-    token = get_line_token(owner)
-    if not token:
-        print(f"❌ [LINE] Missing LINE_CHANNEL_ACCESS_TOKEN for {owner}")
-        return False, f"Missing LINE_CHANNEL_ACCESS_TOKEN for {owner}"
-        
-    group_id = LINE_GROUP_ID_MAHABUCHA if owner == 'mahabucha' else LINE_GROUP_ID_MUTETEAM
-    if not group_id:
-        print(f"❌ [LINE] Missing Group ID for owner: {owner}")
-        return False, f"Missing Group ID for owner: {owner}"
-
-    url = "https://api.line.me/v2/bot/message/push"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
-    data = {
-        "to": group_id,
-        "messages": [{"type": "text", "text": text}]
-    }
-
-    try:
-        r = requests.post(url, headers=headers, json=data, timeout=10)
-        if r.status_code == 200:
-            print(f"✅ [LINE] Notification sent to {owner} group.")
-            return True, None
-        else:
-            print(f"❌ [LINE] Failed to send: {r.status_code} {r.text}")
-            return False, f"LINE API Error {r.status_code}: {r.text}"
-    except Exception as e:
-        print(f"❌ [LINE] Error sending notification: {e}")
-        return False, str(e)
-
-@app.route('/api/line-quota', methods=['GET'])
-def line_quota():
-    def fetch_quota(token):
-        if not token: return None
-        try:
-            h = {"Authorization": f"Bearer {token}"}
-            usage_res = requests.get("https://api.line.me/v2/bot/message/quota/consumption", headers=h, timeout=5)
-            limit_res = requests.get("https://api.line.me/v2/bot/message/quota", headers=h, timeout=5)
-            
-            usage = usage_res.json().get('totalUsage', 0) if usage_res.status_code == 200 else 0
-            limit_data = limit_res.json() if limit_res.status_code == 200 else {}
-            limit = limit_data.get('value', 0)
-            
-            return {"usage": usage, "limit": limit}
-        except:
-            return None
-
-    return jsonify({
-        "muteteam": fetch_quota(get_line_token('muteteam')),
-        "mahabucha": fetch_quota(get_line_token('mahabucha'))
-    }), 200
-
-
-
-
-@app.route('/api/line-webhook', methods=['POST'])
-def line_webhook():
-    try:
-        # รับข้อมูลมาเฉยๆ ไม่ต้องปริ้น log แล้ว ป้องกัน log เต็ม
-        body = request.get_json()
-        return "OK", 200
-    except Exception as e:
-        print(f"Error handling LINE webhook: {e}")
-        return "Error", 500
-
-@app.route('/api/notify-photo', methods=['POST'])
-def notify_photo():
-    data = request.json
-    owner = data.get('owner')
-    booking_code = data.get('booking_code')
-    
-    person1_name = data.get('person1_name')
-    person2_name = data.get('person2_name')
-    customer_name = data.get('customer_name')
-    
-    if person1_name and person2_name:
-        display_name = f"{person1_name} และ {person2_name}"
-    else:
-        display_name = person1_name or customer_name or 'ไม่ระบุชื่อ'
-        
-    tray_count = data.get('tray_count', 0)
-
-    if not owner or not booking_code:
-        return jsonify({"success": False, "message": "ข้อมูลไม่ครบถ้วน"}), 400
-
-    now_th = datetime.now(timezone(timedelta(hours=7)))
-    months_th = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
-    date_str = f"{now_th.day} {months_th[now_th.month]} {now_th.year + 543} เวลา {now_th.strftime('%H:%M')} น."
-
-    page_name = "มหาบูชา" if owner == "mahabucha" else ("มูเตทีม (งานพิธี)" if owner == "muteteam_ceremony" else "มูเตทีม")
-    text = (
-        f"🔔 [คิวปริ้นใหม่]\n"
-        f"เพจ: {page_name}\n"
-        f"วันที่: {date_str}\n"
-        f"รหัสจอง: {booking_code}\n"
-        f"ลูกค้า: {display_name}"
-    )
-    
-    if owner not in ["mahabucha", "muteteam_ceremony"]:
-        text += f"\nจำนวน: {tray_count} องค์เทพ"
-
-    success, err_msg = send_line_notification(owner, text)
-    if not success:
-        return jsonify({"success": False, "error": err_msg}), 200
-    return jsonify({"success": True}), 200
-
-@app.route('/api/line-quota', methods=['GET'])
-def get_line_quota():
-    owner = request.args.get('owner', 'mahabucha')
-    token = LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA if owner == 'mahabucha' else LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM
-    if not token:
-        return jsonify({"error": f"No token for {owner}"}), 500
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    r = requests.get("https://api.line.me/v2/bot/message/quota/consumption", headers=headers)
-    r2 = requests.get("https://api.line.me/v2/bot/message/quota", headers=headers)
-    
-    return jsonify({
-        "consumption": r.json(),
-        "quota": r2.json()
-    }), 200
+# --- [NOTIFY] 11. LINE NOTIFICATIONS (moved to core/blueprints/notifications.py, SG-B-104) ---
+# get_line_token has no remaining direct caller in app.py; send_line_notification
+# is still used by the scheduler functions below (check_trending_news,
+# mahabucha_daily_summary, muteteam_ceremony_daily_summary, muteteam_monthly_summary).
+from core.clients.line_client import send_line_notification
+from core.blueprints.notifications import notifications_bp
+app.register_blueprint(notifications_bp)
 
 @app.route('/api/system-status', methods=['GET'])
 def system_status():
