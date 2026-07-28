@@ -80,6 +80,25 @@ def test_ignores_codes_embedded_in_longer_digit_runs(app_module):
     assert result is False
 
 
+def test_matches_code_prefix_for_laos_owner_same_as_mahabucha(app_module):
+    # laos is "mahabucha style" -- process_ceremony_flow works
+    # identically for it, keyed by its own owner_key/cache slot.
+    with mock.patch.dict(
+        messenger_service.CACHED_FILES,
+        {"laos": {"150ab01": "150ab01.jpg"}},
+    ), mock.patch.object(messenger_service, "send_fb_action", return_value=(True, "")) as mock_send:
+        result = messenger_service.process_ceremony_flow(
+            "user1", "รหัส 150ab01 ครับ", UNKNOWN_PAGE_ID, "laos"
+        )
+
+    assert result is True
+    sent_calls = [(call.args[2], call.args[3]) for call in mock_send.call_args_list]
+    image_sends = [payload for (dtype, payload) in sent_calls if dtype == "image"]
+    assert any("150ab01.jpg" in payload for payload in image_sends)
+    text_sends = [payload for (dtype, payload) in sent_calls if dtype == "text"]
+    assert any("สยามคเณศ (ลาว)" in t for t in text_sends)
+
+
 def test_extracts_multiple_distinct_codes_from_one_message(app_module):
     with mock.patch.object(messenger_service, "send_fb_action", return_value=(True, "")) as mock_send:
         result = messenger_service.process_ceremony_flow(

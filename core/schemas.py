@@ -23,7 +23,7 @@ from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
-PAGE_OWNERS = ("mahabucha", "muteteam", "muteteam_ceremony")
+from core.owners import PAGE_OWNERS
 
 
 class SearchQuery(BaseModel):

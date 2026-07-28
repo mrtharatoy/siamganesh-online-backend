@@ -27,6 +27,12 @@ def test_search_query_lowercases_page_and_strips_code():
     assert q.code == "abc123"
 
 
+@pytest.mark.parametrize("page", ["laos", "ratchaprasong"])
+def test_search_query_accepts_new_owner_pages(page):
+    q = SearchQuery(page=page, code="abc123")
+    assert q.page == page
+
+
 @pytest.mark.parametrize("page,code", [("not-a-page", "abc"), ("muteteam", ""), ("muteteam", "   ")])
 def test_search_query_rejects_invalid_page_or_empty_code(page, code):
     with pytest.raises(ValidationError):

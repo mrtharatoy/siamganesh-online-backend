@@ -6,12 +6,13 @@ only the import source for page-token config moved.
 """
 import requests
 
-from config import MAHABUCHA_PAGE_ID, MAHABUCHA_TOKEN, MUTETEAM_PAGE_ID, MUTETEAM_TOKEN
+from core.owners import OWNERS
 
 
 def get_page_token(page_id):
-    if str(page_id) == str(MAHABUCHA_PAGE_ID): return MAHABUCHA_TOKEN
-    if str(page_id) == str(MUTETEAM_PAGE_ID):  return MUTETEAM_TOKEN
+    for owner in OWNERS.values():
+        if owner.page_id and str(page_id) == str(owner.page_id):
+            return owner.page_token
     return None
 
 

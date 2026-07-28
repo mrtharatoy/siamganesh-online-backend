@@ -8,6 +8,7 @@ tray_count line.
 from datetime import datetime, timezone, timedelta
 
 from core.clients.line_client import send_line_notification
+from core.owners import OWNERS
 
 MONTHS_TH = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
 
@@ -16,7 +17,8 @@ def _build_print_queue_message(owner, booking_code, display_name, tray_count):
     now_th = datetime.now(timezone(timedelta(hours=7)))
     date_str = f"{now_th.day} {MONTHS_TH[now_th.month]} {now_th.year + 543} เวลา {now_th.strftime('%H:%M')} น."
 
-    page_name = "มหาบูชา" if owner == "mahabucha" else ("มูเตทีม (งานพิธี)" if owner == "muteteam_ceremony" else "มูเตทีม")
+    known = OWNERS.get(owner)
+    page_name = known.display_name if known else "มูเตทีม"
     text = (
         f"🔔 [คิวปริ้นใหม่]\n"
         f"เพจ: {page_name}\n"
@@ -25,7 +27,7 @@ def _build_print_queue_message(owner, booking_code, display_name, tray_count):
         f"ลูกค้า: {display_name}"
     )
 
-    if owner not in ["mahabucha", "muteteam_ceremony"]:
+    if not known or known.style != "mahabucha":
         text += f"\nจำนวน: {tray_count} องค์เทพ"
 
     return text

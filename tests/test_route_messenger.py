@@ -76,6 +76,27 @@ def test_webhook_dispatches_process_message_for_a_real_text_message(client):
     mock_thread_cls.return_value.start.assert_called_once()
 
 
+def test_process_message_routes_laos_page_id_to_ceremony_flow():
+    from config import LAOS_PAGE_ID
+    import core.services.messenger_service as messenger_service
+
+    with mock.patch.object(messenger_service, "process_ceremony_flow") as mock_flow:
+        messenger_service.process_message("user1", "150ab01", LAOS_PAGE_ID)
+
+    mock_flow.assert_called_once_with("user1", "150ab01", LAOS_PAGE_ID, "laos")
+
+
+def test_process_message_routes_unknown_page_id_to_nothing():
+    import core.services.messenger_service as messenger_service
+
+    with mock.patch.object(messenger_service, "process_ceremony_flow") as mock_flow, \
+         mock.patch.object(messenger_service, "process_muteteam") as mock_muteteam:
+        messenger_service.process_message("user1", "150ab01", "no-such-page")
+
+    mock_flow.assert_not_called()
+    mock_muteteam.assert_not_called()
+
+
 def test_webhook_skips_bot_sent_echo_messages(client):
     payload = {
         "object": "page",

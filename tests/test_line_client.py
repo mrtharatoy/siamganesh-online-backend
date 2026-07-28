@@ -10,6 +10,28 @@ from unittest import mock
 import core.clients.line_client as line_client
 
 
+def test_get_line_token_returns_laos_token_when_configured():
+    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_LAOS", "laos-line-token"):
+        assert line_client.get_line_token("laos") == "laos-line-token"
+
+
+def test_get_line_token_returns_ratchaprasong_token_when_configured():
+    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_RATCHAPRASONG", "ratchaprasong-line-token"):
+        assert line_client.get_line_token("ratchaprasong") == "ratchaprasong-line-token"
+
+
+def test_send_line_notification_uses_mahabucha_group_for_laos_and_ratchaprasong():
+    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_LAOS", "laos-line-token"), \
+         mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_RATCHAPRASONG", "ratchaprasong-line-token"), \
+         mock.patch.object(line_client, "LINE_GROUP_ID_MAHABUCHA", "mahabucha-group"), \
+         mock.patch("requests.post", return_value=mock.Mock(status_code=200)) as mock_post:
+        line_client.send_line_notification("laos", "hello")
+        line_client.send_line_notification("ratchaprasong", "hello")
+
+    groups_used = [call.kwargs["json"]["to"] for call in mock_post.call_args_list]
+    assert groups_used == ["mahabucha-group", "mahabucha-group"]
+
+
 def test_fetch_quota_returns_none_when_no_token():
     assert line_client.fetch_quota(None) is None
     assert line_client.fetch_quota("") is None

@@ -45,6 +45,14 @@ def test_notify_print_queue_includes_tray_count_for_muteteam_only():
     assert "จำนวน" not in mock_send.call_args.args[1]
 
 
+def test_notify_print_queue_uses_display_name_and_no_tray_count_for_laos():
+    with mock.patch.object(service, "send_line_notification", return_value=(True, None)) as mock_send:
+        service.notify_print_queue("laos", "150AA010001", tray_count=3)
+    text = mock_send.call_args.args[1]
+    assert "เพจ: สยามคเณศ (ลาว)" in text
+    assert "จำนวน" not in text
+
+
 def test_notify_print_queue_returns_send_line_notification_result():
     with mock.patch.object(service, "send_line_notification", return_value=(False, "some error")):
         success, err = service.notify_print_queue("muteteam", "150AA010001")

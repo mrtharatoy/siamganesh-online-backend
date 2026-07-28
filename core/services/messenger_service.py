@@ -18,8 +18,9 @@ import time
 
 import requests
 
-from config import MAHABUCHA_PAGE_ID, MUTETEAM_PAGE_ID, SUPABASE_URL, SUPABASE_KEY
+from config import SUPABASE_URL, SUPABASE_KEY
 from core.clients.facebook_client import send_fb_action
+from core.owners import OWNERS, find_owner_by_page_id
 from core.repositories.booking_repository import (
     get_booking_by_code, get_system_setting, update_booking_auto_reply_log, get_booking_names,
 )
@@ -79,7 +80,8 @@ def process_ceremony_flow(target_id, text, page_id, owner_key):
             unknown_codes.append(code)
 
     if found_imgs:
-        page_name = "มหาบูชา" if owner_key == "mahabucha" else "มูเตทีม"
+        known = OWNERS.get(owner_key)
+        page_name = known.display_name if known else "มูเตทีม"
         intro = (
             "[PHOTO] 📸 ขออนุญาตส่งมอบความสิริมงคลผ่านภาพถ่าย ที่ใช้ในงานพิธีในครั้งนี้ครับ\n\n"
             f"ร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ \"{page_name}\" นะครับ 🙏✨\n\n"
@@ -109,8 +111,11 @@ def process_ceremony_flow(target_id, text, page_id, owner_key):
     return True
 
 
-def process_mahabucha(target_id, text, page_id):
-    process_ceremony_flow(target_id, text, page_id, "mahabucha")
+def process_mahabucha_style_owner(target_id, text, page_id, owner_key):
+    """Generic version of process_mahabucha() for any owner whose
+    Messenger flow should behave the same way (style="mahabucha" in
+    core/owners.py) -- e.g. the laos/ratchaprasong pages."""
+    process_ceremony_flow(target_id, text, page_id, owner_key)
 
 
 def check_and_send_catalog_codes(target_id, text, page_id):
@@ -232,12 +237,14 @@ def process_muteteam(target_id, text, page_id):
 
 
 def process_message(target_id, text, page_id):
-    print(f"[PROCESS] [PROCESS] page_id={page_id} | MAHABUCHA={MAHABUCHA_PAGE_ID} | MUTETEAM={MUTETEAM_PAGE_ID}")
-    if str(page_id) == str(MAHABUCHA_PAGE_ID):
-        print("[INFO] [ROUTE] → mahabucha")
-        process_mahabucha(target_id, text, page_id)
-    elif str(page_id) == str(MUTETEAM_PAGE_ID):
-        print("[INFO] [ROUTE] → muteteam")
+    owner_key = find_owner_by_page_id(page_id)
+    print(f"[PROCESS] page_id={page_id} matched_owner={owner_key}")
+    if owner_key is None:
+        print(f"❌ [ROUTE] page_id ไม่ตรงกับเพจใดเลย!")
+        return
+
+    print(f"[INFO] [ROUTE] → {owner_key}")
+    if owner_key == "muteteam":
         process_muteteam(target_id, text, page_id)
     else:
-        print(f"❌ [ROUTE] page_id ไม่ตรงกับเพจใดเลย!")
+        process_mahabucha_style_owner(target_id, text, page_id, owner_key)

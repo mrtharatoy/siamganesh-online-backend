@@ -8,7 +8,7 @@ get_page_token() moved to core/clients/facebook_client.py (SG-B-102) and
 has no remaining direct import in app.py, so it's tested via that module
 directly rather than through app_module.
 """
-from config import MAHABUCHA_PAGE_ID, MUTETEAM_PAGE_ID, GITHUB_USERNAME, REPO_NAME, BRANCH
+from config import MAHABUCHA_PAGE_ID, MUTETEAM_PAGE_ID, LAOS_PAGE_ID, RATCHAPRASONG_PAGE_ID, GITHUB_USERNAME, REPO_NAME, BRANCH
 from core.clients.facebook_client import get_page_token
 from core.services.ai_service import generate_thank_you_message
 from core.services.image_cache_service import get_image_url
@@ -42,6 +42,14 @@ def test_get_page_token_compares_as_strings():
 
 def test_get_page_token_returns_none_for_unknown_page(app_module):
     assert get_page_token("9999999999") is None
+
+
+def test_get_page_token_returns_laos_token_for_laos_page():
+    assert get_page_token(LAOS_PAGE_ID) == "test-laos-token"
+
+
+def test_get_page_token_returns_ratchaprasong_token_for_ratchaprasong_page():
+    assert get_page_token(RATCHAPRASONG_PAGE_ID) == "test-ratchaprasong-token"
 
 
 def test_generate_thank_you_message_fallback_uses_generic_name_when_no_names():

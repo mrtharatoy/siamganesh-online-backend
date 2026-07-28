@@ -178,92 +178,98 @@ def check_trending_news():
         print(f"❌ [NEWS] Error checking trending news: {e}")
 
 # --- [NEWS] 13. DAILY EVENT SUMMARY SCHEDULER ---
-def mahabucha_daily_summary():
+# Generic per-owner daily summary, parameterized so each "mahabucha
+# style" owner (mahabucha, muteteam_ceremony, laos, ratchaprasong) gets
+# its own toggleable daily_summary_<owner> setting and its own
+# galleries/bookings query, without copy-pasting this ~90-line body
+# once per owner (previously duplicated verbatim for mahabucha and
+# muteteam_ceremony).
+def _owner_daily_summary(owner, setting_id, default_caption):
     try:
         if not SUPABASE_URL or not SUPABASE_KEY:
             return
-            
-        print("[TIMER] [SUMMARY] Running daily event summary check...")
+
+        print(f"[TIMER] [SUMMARY] Running daily event summary check for {owner}...")
         base = SUPABASE_URL.rstrip("/")
         rest_base = base if base.endswith("/rest/v1") else f"{base}/rest/v1"
         headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
 
-        # 1. Check if daily summary is enabled for mahabucha
+        # 1. Check if daily summary is enabled for this owner
         url_settings = f"{rest_base}/system_settings"
-        res_settings = requests.get(url_settings, headers=headers, params={"id": "eq.daily_summary_mahabucha", "select": "value"}, timeout=10)
+        res_settings = requests.get(url_settings, headers=headers, params={"id": f"eq.{setting_id}", "select": "value"}, timeout=10)
         if res_settings.status_code != 200 or not res_settings.json():
             return
-            
+
         setting_val = res_settings.json()[0].get("value", {})
         if not setting_val.get("enabled", False):
-            print("[TIMER] [SUMMARY] Daily summary for mahabucha is disabled.")
+            print(f"[TIMER] [SUMMARY] Daily summary for {owner} is disabled.")
             return
-            
-        # 2. Get active events for mahabucha
+
+        # 2. Get active events for this owner
         tz = timezone(timedelta(hours=7))
         now = datetime.now(tz)
         today = now.date()
-        
+
         url_galleries = f"{rest_base}/galleries"
-        res_galleries = requests.get(url_galleries, headers=headers, params={"owner": "eq.mahabucha", "event_date": "not.is.null", "select": "id,caption,event_date,created_at"}, timeout=10)
+        res_galleries = requests.get(url_galleries, headers=headers, params={"owner": f"eq.{owner}", "event_date": "not.is.null", "select": "id,caption,event_date,created_at"}, timeout=10)
         if res_galleries.status_code != 200 or not res_galleries.json():
             return
-            
+
         events_data = res_galleries.json()
-        
+
         for ev in events_data:
             ev_date_str = ev.get("event_date")
             if not ev_date_str:
                 continue
             ev_date = datetime.strptime(ev_date_str, "%Y-%m-%d").date()
-            
+
             # Skip if event is already past (yesterday or earlier)
             if today > ev_date:
                 continue
-                
+
             # If the event_date is exactly today, it's the final day (ปิดยอด)
             is_final = (today == ev_date)
-            
+
             # Fetch all bookings for this gallery (any status)
             url_bookings = f"{rest_base}/bookings"
             res_bookings = requests.get(url_bookings, headers=headers, params={"gallery_id": f"eq.{ev['id']}", "select": "total_price,tray_count,created_at"}, timeout=10)
             if res_bookings.status_code != 200:
                 continue
-            
+
             bookings_data = res_bookings.json()
-            
+
             # 24-hour cutoff
             yesterday_2100 = now.replace(hour=21, minute=0, second=0, microsecond=0) - timedelta(days=1)
             today_2100 = now.replace(hour=21, minute=0, second=0, microsecond=0)
-            
+
             total_by_price = defaultdict(int)
             today_by_price = defaultdict(int)
-            
+
             for b in bookings_data:
                 b_created_at_str = b.get("created_at")
                 if not b_created_at_str:
                     continue
-                    
+
                 b_created_at = datetime.fromisoformat(b_created_at_str.replace("Z", "+00:00")).astimezone(tz)
                 price = b.get("total_price") or 0
                 count = b.get("tray_count") or 1
-                
+
                 # We only count bookings created before or exactly at today 21:00
                 if b_created_at <= today_2100:
                     total_by_price[price] += count
-                    
+
                     # If created after yesterday 21:00, it's today's increment
                     if b_created_at > yesterday_2100:
                         today_by_price[price] += count
-                        
+
             # Format message
-            caption = ev.get("caption", "งานพิธีมหาบูชา")
-            
+            caption = ev.get("caption", default_caption)
+
             if is_final:
                 msg = f"🔔 สรุปผลปิดยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
             else:
                 msg = f"🔔 สรุปยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
-                
+
             msg += "[ 📈 ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
             today_total = 0
             for price in sorted(today_by_price.keys()):
@@ -271,7 +277,7 @@ def mahabucha_daily_summary():
                 today_total += c
                 msg += f"- แบบ {price} จำนวน +{c} ถาด\n"
             msg += f"รวมเพิ่มวันนี้ +{today_total} ถาด\n\n"
-            
+
             msg += "[ 📊 ยอดรวมสะสมทั้งหมด ]\n"
             overall_total = 0
             for price in sorted(total_by_price.keys()):
@@ -279,130 +285,32 @@ def mahabucha_daily_summary():
                 overall_total += c
                 msg += f"- แบบ {price} จำนวน {c} ถาด\n"
             msg += f"✅ รวมสะสมทั้งหมด {overall_total} ถาด\n\n"
-            
+
             if is_final:
                 msg += " สิ้นสุดการรับจองและปิดยอดสำหรับงานพิธีนี้เรียบร้อยครับ"
-                
+
             # Send via Line
-            send_line_notification("mahabucha", msg)
+            send_line_notification(owner, msg)
             print(f"✅ [SUMMARY] Sent daily summary for {caption}")
-            
+
     except Exception as e:
         print(f"❌ [SUMMARY] Error in daily event summary: {e}")
 
+
+def mahabucha_daily_summary():
+    _owner_daily_summary("mahabucha", "daily_summary_mahabucha", "งานพิธีมหาบูชา")
 
 
 def muteteam_ceremony_daily_summary():
-    try:
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            return
-            
-        print("[TIMER] [SUMMARY] Running daily event summary check...")
-        base = SUPABASE_URL.rstrip("/")
-        rest_base = base if base.endswith("/rest/v1") else f"{base}/rest/v1"
-        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+    _owner_daily_summary("muteteam_ceremony", "daily_summary_muteteam_ceremony", "มูเตทีม (งานพิธี)")
 
-        # 1. Check if daily summary is enabled for muteteam_ceremony
-        url_settings = f"{rest_base}/system_settings"
-        res_settings = requests.get(url_settings, headers=headers, params={"id": "eq.daily_summary_muteteam_ceremony", "select": "value"}, timeout=10)
-        if res_settings.status_code != 200 or not res_settings.json():
-            return
-            
-        setting_val = res_settings.json()[0].get("value", {})
-        if not setting_val.get("enabled", False):
-            print("[TIMER] [SUMMARY] Daily summary for muteteam_ceremony is disabled.")
-            return
-            
-        # 2. Get active events for muteteam_ceremony
-        tz = timezone(timedelta(hours=7))
-        now = datetime.now(tz)
-        today = now.date()
-        
-        url_galleries = f"{rest_base}/galleries"
-        res_galleries = requests.get(url_galleries, headers=headers, params={"owner": "eq.muteteam_ceremony", "event_date": "not.is.null", "select": "id,caption,event_date,created_at"}, timeout=10)
-        if res_galleries.status_code != 200 or not res_galleries.json():
-            return
-            
-        events_data = res_galleries.json()
-        
-        for ev in events_data:
-            ev_date_str = ev.get("event_date")
-            if not ev_date_str:
-                continue
-            ev_date = datetime.strptime(ev_date_str, "%Y-%m-%d").date()
-            
-            # Skip if event is already past (yesterday or earlier)
-            if today > ev_date:
-                continue
-                
-            # If the event_date is exactly today, it's the final day (ปิดยอด)
-            is_final = (today == ev_date)
-            
-            # Fetch all bookings for this gallery (any status)
-            url_bookings = f"{rest_base}/bookings"
-            res_bookings = requests.get(url_bookings, headers=headers, params={"gallery_id": f"eq.{ev['id']}", "select": "total_price,tray_count,created_at"}, timeout=10)
-            if res_bookings.status_code != 200:
-                continue
-            
-            bookings_data = res_bookings.json()
-            
-            # 24-hour cutoff
-            yesterday_2100 = now.replace(hour=21, minute=0, second=0, microsecond=0) - timedelta(days=1)
-            today_2100 = now.replace(hour=21, minute=0, second=0, microsecond=0)
-            
-            total_by_price = defaultdict(int)
-            today_by_price = defaultdict(int)
-            
-            for b in bookings_data:
-                b_created_at_str = b.get("created_at")
-                if not b_created_at_str:
-                    continue
-                    
-                b_created_at = datetime.fromisoformat(b_created_at_str.replace("Z", "+00:00")).astimezone(tz)
-                price = b.get("total_price") or 0
-                count = b.get("tray_count") or 1
-                
-                # We only count bookings created before or exactly at today 21:00
-                if b_created_at <= today_2100:
-                    total_by_price[price] += count
-                    
-                    # If created after yesterday 21:00, it's today's increment
-                    if b_created_at > yesterday_2100:
-                        today_by_price[price] += count
-                        
-            # Format message
-            caption = ev.get("caption", "มูเตทีม (งานพิธี)")
-            
-            if is_final:
-                msg = f"🔔 สรุปผลปิดยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
-            else:
-                msg = f"🔔 สรุปยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
-                
-            msg += "[ 📈 ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
-            today_total = 0
-            for price in sorted(today_by_price.keys()):
-                c = today_by_price[price]
-                today_total += c
-                msg += f"- แบบ {price} จำนวน +{c} ถาด\n"
-            msg += f"รวมเพิ่มวันนี้ +{today_total} ถาด\n\n"
-            
-            msg += "[ 📊 ยอดรวมสะสมทั้งหมด ]\n"
-            overall_total = 0
-            for price in sorted(total_by_price.keys()):
-                c = total_by_price[price]
-                overall_total += c
-                msg += f"- แบบ {price} จำนวน {c} ถาด\n"
-            msg += f"✅ รวมสะสมทั้งหมด {overall_total} ถาด\n\n"
-            
-            if is_final:
-                msg += " สิ้นสุดการรับจองและปิดยอดสำหรับงานพิธีนี้เรียบร้อยครับ"
-                
-            # Send via Line
-            send_line_notification("muteteam_ceremony", msg)
-            print(f"✅ [SUMMARY] Sent daily summary for {caption}")
-            
-    except Exception as e:
-        print(f"❌ [SUMMARY] Error in daily event summary: {e}")
+
+def laos_daily_summary():
+    _owner_daily_summary("laos", "daily_summary_laos", "สยามคเณศ (ลาว)")
+
+
+def ratchaprasong_daily_summary():
+    _owner_daily_summary("ratchaprasong", "daily_summary_ratchaprasong", "สยามคเณศ (ราชประสงค์)")
 
 # --- [STATS] 14. MUTETEAM MONTHLY SUMMARY SCHEDULER ---
 def muteteam_monthly_summary():
@@ -489,6 +397,8 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(func=check_trending_news, trigger="interval", hours=1, next_run_time=datetime.now())
 scheduler.add_job(func=mahabucha_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.add_job(func=muteteam_ceremony_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
+scheduler.add_job(func=laos_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
+scheduler.add_job(func=ratchaprasong_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.add_job(func=muteteam_monthly_summary, trigger="cron", day="last", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.start()
 

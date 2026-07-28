@@ -35,9 +35,10 @@ import time
 import requests
 
 from config import GITHUB_USERNAME, REPO_NAME, BRANCH, GITHUB_TOKEN
+from core.owners import PAGE_OWNERS
 
-CACHED_FILES = {"mahabucha": {}, "muteteam": {}, "muteteam_ceremony": {}}
-TOTAL_IMAGES_SIZE = {"mahabucha": 0, "muteteam": 0, "muteteam_ceremony": 0}
+CACHED_FILES = {owner: {} for owner in PAGE_OWNERS}
+TOTAL_IMAGES_SIZE = {owner: 0 for owner in PAGE_OWNERS}
 lock = threading.Lock()
 
 _files_loaded = False
@@ -69,7 +70,7 @@ def update_file_list():
     if GITHUB_TOKEN:
         headers["Authorization"] = f"token {GITHUB_TOKEN}"
 
-    for page in ["mahabucha", "muteteam", "muteteam_ceremony"]:
+    for page in PAGE_OWNERS:
         api_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/images/{page}?ref={BRANCH}&t={int(time.time())}"
         try:
             r = requests.get(api_url, headers=headers, timeout=15)

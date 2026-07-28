@@ -13,16 +13,37 @@ import requests
 
 from config import (
     LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA,
-    LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM, LINE_GROUP_ID_MAHABUCHA, LINE_GROUP_ID_MUTETEAM,
+    LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM, LINE_CHANNEL_ACCESS_TOKEN_LAOS,
+    LINE_CHANNEL_ACCESS_TOKEN_RATCHAPRASONG,
+    LINE_GROUP_ID_MAHABUCHA, LINE_GROUP_ID_MUTETEAM,
 )
+
+# owner -> the *name* of this module's own token/group constant (not its
+# value), so a test's mock.patch.object(line_client, "LINE_..._X", ...)
+# is picked up via globals() at call time exactly like the plain
+# module-level names it replaces.
+_TOKEN_ATTR_BY_OWNER = {
+    "mahabucha": "LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA",
+    "muteteam": "LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM",
+    "muteteam_ceremony": "LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM",
+    "laos": "LINE_CHANNEL_ACCESS_TOKEN_LAOS",
+    "ratchaprasong": "LINE_CHANNEL_ACCESS_TOKEN_RATCHAPRASONG",
+}
+# laos/ratchaprasong intentionally reuse mahabucha's LINE group (no
+# separate group was provisioned for them -- confirmed by the user).
+_GROUP_ATTR_BY_OWNER = {
+    "mahabucha": "LINE_GROUP_ID_MAHABUCHA",
+    "muteteam": "LINE_GROUP_ID_MUTETEAM",
+    "muteteam_ceremony": "LINE_GROUP_ID_MUTETEAM",
+    "laos": "LINE_GROUP_ID_MAHABUCHA",
+    "ratchaprasong": "LINE_GROUP_ID_MAHABUCHA",
+}
 
 
 def get_line_token(owner):
-    if owner == 'mahabucha' and LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA:
-        return LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA
-    if owner in ['muteteam', 'muteteam_ceremony'] and LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM:
-        return LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM
-    return LINE_CHANNEL_ACCESS_TOKEN
+    attr = _TOKEN_ATTR_BY_OWNER.get(owner)
+    token = globals().get(attr) if attr else None
+    return token or LINE_CHANNEL_ACCESS_TOKEN
 
 
 def send_line_notification(owner, text):
@@ -31,7 +52,8 @@ def send_line_notification(owner, text):
         print(f"❌ [LINE] Missing LINE_CHANNEL_ACCESS_TOKEN for {owner}")
         return False, f"Missing LINE_CHANNEL_ACCESS_TOKEN for {owner}"
 
-    group_id = LINE_GROUP_ID_MAHABUCHA if owner == 'mahabucha' else LINE_GROUP_ID_MUTETEAM
+    group_attr = _GROUP_ATTR_BY_OWNER.get(owner, "LINE_GROUP_ID_MUTETEAM")
+    group_id = globals().get(group_attr)
     if not group_id:
         print(f"❌ [LINE] Missing Group ID for owner: {owner}")
         return False, f"Missing Group ID for owner: {owner}"
