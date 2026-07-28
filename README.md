@@ -9,7 +9,7 @@
 [![Facebook API](https://img.shields.io/badge/Facebook_Graph_API-v19.0-1877F2?style=for-the-badge&logo=facebook&logoColor=white)](https://developers.facebook.com/)
 
 **ระบบ Backend อัตโนมัติ (Flask) สำหรับจัดการและส่งมอบภาพพิธีกรรมทางศาสนา/ความเชื่อ ผ่าน Facebook Messenger Webhook**  
-รองรับการแยกทำงานตามเพจต้นทางแบบ Multi-Page ได้แก่ **เพจมหาบูชา** และ **เพจมูเตทีม** พร้อมผสานการทำงานกับ Supabase และ Google Gemini AI
+รองรับการแยกทำงานตามเพจต้นทางแบบ Multi-Page ได้แก่ **มหาบูชา**, **มูเตทีม**, **มูเตทีม (งานพิธี)**, **สยามคเณศ (ลาว)** และ **สยามคเณศ (ราชประสงค์)** พร้อมผสานการทำงานกับ Supabase และ Google Gemini AI
 
 </div>
 
@@ -32,15 +32,16 @@
 graph TD
     User([👤 ผู้ใช้งาน / ลูกค้า]) -->|ส่งข้อความ / รหัส| FB[💬 Facebook Messenger]
     FB -->|Webhook POST /| Flask[🌶️ Flask Webhook App]
-    
+    Flask -->|find_owner_by_page_id| Owners[(📇 core/owners.py registry)]
+
     subgraph Webhook Router
-        Flask -->|Page: มหาบูชา| MB[📿 Flow มหาบูชา]
-        Flask -->|Page: มูเตทีม| MT[🔮 Flow มูเตทีม]
+        Owners -->|Page: มหาบูชา / ลาว / ราชประสงค์| MB["📿 Flow มหาบูชา-style<br/>(process_ceremony_flow)"]
+        Owners -->|Page: มูเตทีม| MT[🔮 Flow มูเตทีม]
     end
 
-    subgraph มหาบูชา Flow
+    subgraph "มหาบูชา-style Flow (มหาบูชา, มูเตทีม งานพิธี, ลาว, ราชประสงค์)"
         MB -->|ดักจับรหัสองค์เทพ| RegexMB{ตรงกับ Regex?}
-        RegexMB -->|ใช่| CacheMB[📂 ค้นหารูปใน GitHub Cache]
+        RegexMB -->|ใช่| CacheMB[📂 ค้นหารูปใน Cache ตาม owner_key]
         CacheMB -->|พบภาพ| SendMB[🖼️ ส่งรูปภาพบูชาผ่าน Graph API]
         RegexMB -->|ไม่พบ/ไม่ตรง| AdminMB[👤 แจ้งเตือนแอดมิน]
     end
@@ -62,19 +63,31 @@ graph TD
     end
 ```
 
+> **หมายเหตุ**: `core/owners.py` เป็น registry กลางของทุก owner/page ในระบบ (`mahabucha`, `muteteam`, `muteteam_ceremony`, `laos`, `ratchaprasong`) ใช้แทนที่การ hardcode รายชื่อ owner กระจายอยู่หลายจุด — ดูหัวข้อ [🌍 การเพิ่มเพจ/แบรนด์ใหม่](#-การเพิ่มเพจแบรนด์ใหม่-adding-a-new-owner) ด้านล่าง
+
 ---
 
 ## 📂 โครงสร้างโปรเจกต์ (Project Structure)
 
 ```bash
 siamganesh-online-backend/
-├── app.py              # แอปพลิเคชันหลัก (Flask) และจุดรวม Webhook & APIs
+├── app.py              # แอปพลิเคชันหลัก (Flask): สร้าง app, ผูก blueprint, ตั้ง scheduler
+├── config.py           # โหลด Environment Variables ทั้งหมด
+├── core/
+│   ├── owners.py       # 📇 Registry กลางของทุก owner/page (mahabucha, muteteam, muteteam_ceremony, laos, ratchaprasong)
+│   ├── blueprints/      # Route handlers (ai, images, messenger, notifications, system)
+│   ├── services/       # Business logic (messenger_service, image_cache_service, notification_service, ...)
+│   ├── clients/         # External API clients (facebook_client, line_client, github_client, gemini_client)
+│   ├── repositories/    # Supabase query layer
+│   └── schemas.py       # Pydantic request-validation schemas ต่อ endpoint
 ├── requirements.txt    # รายการ dependencies ที่จำเป็นสำหรับรันระบบ
 ├── README.md           # เอกสารแนะนำโปรเจกต์และการใช้งาน
-└── images/             # โฟลเดอร์เก็บภาพถาดถวายและผลลัพธ์พิธีกรรม (Sync ไปยัง GitHub)
+└── images/             # โฟลเดอร์เก็บภาพถาดถวายและผลลัพธ์พิธีกรรม (Sync ไปยัง GitHub — เฉพาะ owner ที่ใช้ GitHub storage)
     ├── mahabucha/      # ภาพถาดถวายของเพจมหาบูชา (จัดเก็บในชื่อ deity_code.jpg)
     └── muteteam/       # ภาพถาดถวายของเพจมูเตทีม (จัดเก็บในชื่อ booking_code_index.webp)
 ```
+
+> เพจ **สยามคเณศ (ลาว)** และ **สยามคเณศ (ราชประสงค์)** ใช้ Supabase Storage แทน GitHub สำหรับเก็บภาพ (เหมือนมหาบูชา) จึงไม่มีโฟลเดอร์ของตัวเองใน `images/`
 
 ---
 
@@ -88,11 +101,23 @@ siamganesh-online-backend/
 | `MAHABUCHA_TOKEN` | Page Access Token ที่ได้จาก Facebook Developer (มหาบูชา) | `EAABw...` |
 | `MUTETEAM_PAGE_ID` | หมายเลข ID ของ Facebook Page (มูเตทีม) | `564738291012345` |
 | `MUTETEAM_TOKEN` | Page Access Token ที่ได้จาก Facebook Developer (มูเตทีม) | `EAABw...` |
+| `LAOS_PAGE_ID` | หมายเลข ID ของ Facebook Page (สยามคเณศ ลาว) | `1088214627718544` |
+| `LAOS_TOKEN` | Page Access Token ที่ได้จาก Facebook Developer (สยามคเณศ ลาว) | `EAABw...` |
+| `RATCHAPRASONG_PAGE_ID` | หมายเลข ID ของ Facebook Page (สยามคเณศ ราชประสงค์) | `1078784875322540` |
+| `RATCHAPRASONG_TOKEN` | Page Access Token ที่ได้จาก Facebook Developer (สยามคเณศ ราชประสงค์) | `EAABw...` |
 | `VERIFY_TOKEN` | โทเค็นความปลอดภัยที่ตั้งเอง เพื่อกรอกในหน้า Messenger Webhook Setup | `SiamGaneshVerifyToken2026` |
 | `GITHUB_TOKEN` | GitHub Personal Access Token (แนะนำแบบ Fine-grained หรือ Classic ที่มีสิทธิ์อ่าน/เขียน content) | `ghp_abcdef...` |
 | `GEMINI_API_KEY` | Google AI Studio API Key สำหรับเรียกใช้โมเดล Gemini | `AIzaSy...` |
 | `SUPABASE_URL` | URL ของโครงการ Supabase ของคุณ | `https://xxxx.supabase.co` |
 | `SUPABASE_KEY` | Supabase API Key (แนะนำ Service Role Key ในกรณีที่ไม่อยู่ภายใต้ RLS หรือ Anon Key) | `eyJhbGciOi...` |
+| `LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA` | LINE Channel Access Token สำหรับแจ้งเตือนของมหาบูชา | `Rws+...` |
+| `LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM` | LINE Channel Access Token สำหรับแจ้งเตือนของมูเตทีม (ใช้ร่วมกับมูเตทีม งานพิธี) | `Rws+...` |
+| `LINE_CHANNEL_ACCESS_TOKEN_LAOS` | LINE Channel Access Token สำหรับแจ้งเตือนของสยามคเณศ (ลาว) | `Rws+...` |
+| `LINE_CHANNEL_ACCESS_TOKEN_RATCHAPRASONG` | LINE Channel Access Token สำหรับแจ้งเตือนของสยามคเณศ (ราชประสงค์) | `Rws+...` |
+| `LINE_GROUP_ID_MAHABUCHA` | LINE Group ID ปลายทางแจ้งเตือนของมหาบูชา — **ใช้กลุ่มเดียวกันสำหรับลาว/ราชประสงค์ด้วย** (ไม่ต้องตั้ง group id แยก) | `Cxxxxxxxxxxxx` |
+| `LINE_GROUP_ID_MUTETEAM` | LINE Group ID ปลายทางแจ้งเตือนของมูเตทีม | `Cxxxxxxxxxxxx` |
+
+> 🌍 **การเพิ่มเพจ/แบรนด์ใหม่ (Adding a new owner)**: ตัวแปร owner ทั้งหมดถูกรวมศูนย์ไว้ที่ `core/owners.py` — การเพิ่มเพจใหม่ที่ทำงานแบบเดียวกับมหาบูชา ทำได้โดยเพิ่ม env vars ชุดข้างต้น (PAGE_ID/TOKEN/LINE token) แล้วเพิ่ม entry ใหม่ใน `OWNERS` dict ของ `core/owners.py` เพียงจุดเดียว ไม่ต้องแก้ if/elif กระจายในหลายไฟล์เหมือนเดิมอีกต่อไป
 
 ---
 
@@ -100,11 +125,11 @@ siamganesh-online-backend/
 
 ระบบจะใช้ Regular Expression (Regex) ในการตรวจสอบความถูกต้องของรหัสที่ลูกค้าพิมพ์เข้ามาผ่านแชท ดังนี้:
 
-### 📿 1. เพจมหาบูชา (Mahabucha)
-*   **เป้าหมาย**: จับคู่รูปภาพองค์เทพรายบุคคล
+### 📿 1. เพจสไตล์มหาบูชา (Mahabucha-style: มหาบูชา, มูเตทีม งานพิธี, สยามคเณศ ลาว, สยามคเณศ ราชประสงค์)
+*   **เป้าหมาย**: จับคู่รูปภาพองค์เทพรายบุคคล — logic เดียวกันทุกเพจในกลุ่มนี้ (`process_ceremony_flow`, พารามิเตอร์เดียวคือ `owner_key`)
 *   **รูปแบบ Regex**: `(?:269|999)[a-z]{2}(?:0[1-9]|1[0-9]|20)\d{3}`
 *   **ตัวอย่างรหัสที่ถูกต้อง**: `269aa01234`, `999bc15001`
-*   **การจับคู่ไฟล์**: ค้นหาไฟล์ใน `images/mahabucha/` ที่ชื่อไฟล์ไม่มี extension ตรงกับรหัส เช่น `269aa01234.jpg`
+*   **การจับคู่ไฟล์**: ค้นหาไฟล์ใน cache ของ owner นั้น ๆ (`images/<owner>/` บน GitHub สำหรับมหาบูชา/มูเตทีม งานพิธี, Supabase Storage สำหรับลาว/ราชประสงค์) ที่ชื่อไฟล์ไม่มี extension ตรงกับรหัส เช่น `269aa01234.jpg`
 
 ### 🔮 2. เพจมูเตทีม (Muteteam)
 *   **เป้าหมาย**: จับคู่ผลลัพธ์ภาพพิธีตามรหัสจอง 12 หลัก
@@ -136,6 +161,10 @@ export MAHABUCHA_PAGE_ID="your_mahabucha_page_id"
 export MAHABUCHA_TOKEN="your_mahabucha_page_access_token"
 export MUTETEAM_PAGE_ID="your_muteteam_page_id"
 export MUTETEAM_TOKEN="your_muteteam_page_access_token"
+export LAOS_PAGE_ID="your_laos_page_id"
+export LAOS_TOKEN="your_laos_page_access_token"
+export RATCHAPRASONG_PAGE_ID="your_ratchaprasong_page_id"
+export RATCHAPRASONG_TOKEN="your_ratchaprasong_page_access_token"
 export VERIFY_TOKEN="your_webhook_verify_token"
 export GITHUB_TOKEN="your_github_token"
 export GEMINI_API_KEY="your_gemini_api_key"
@@ -168,7 +197,7 @@ python app.py
 *   **Endpoint**: `/api/search`
 *   **Method**: `GET`
 *   **Parameters**:
-    *   `page`: ระบุ `mahabucha` หรือ `muteteam`
+    *   `page`: ระบุ `mahabucha`, `muteteam`, `muteteam_ceremony`, `laos` หรือ `ratchaprasong`
     *   `code`: รหัสที่ต้องการค้นหา
 *   **ตัวอย่างการเรียก**:
     `GET http://localhost:5000/api/search?page=muteteam&code=260519142238`
