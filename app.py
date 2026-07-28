@@ -28,47 +28,12 @@ CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
 
 SERVER_START_TIME = datetime.now()
 
-CACHED_FILES = {"mahabucha": {}, "muteteam": {}, "muteteam_ceremony": {}}
-TOTAL_IMAGES_SIZE = {"mahabucha": 0, "muteteam": 0, "muteteam_ceremony": 0}
-FILES_LOADED = False
-LAST_CACHE_REFRESH = 0
-lock = threading.Lock()
-
-# --- [FILE] 2. GITHUB FILES ---
-def update_file_list():
-    global CACHED_FILES, TOTAL_IMAGES_SIZE, FILES_LOADED
-    print("[SYNC] Updating image list from GitHub...")
-    headers = {
-        "User-Agent": "Siamganesh-Bot", 
-        "Accept": "application/vnd.github.v3+json",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache"
-    }
-    if GITHUB_TOKEN:
-        headers["Authorization"] = f"token {GITHUB_TOKEN}"
-
-    for page in ["mahabucha", "muteteam", "muteteam_ceremony"]:
-        api_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/images/{page}?ref={BRANCH}&t={int(time.time())}"
-        try:
-            r = requests.get(api_url, headers=headers, timeout=15)
-            if r.status_code == 200:
-                files = r.json()
-                temp_cache = {}
-                total_size = 0
-                for item in files:
-                    if item['type'] == 'file' and item['name'] != '.keep':
-                        name_no_ext = item['name'].rsplit('.', 1)[0].strip().lower()
-                        temp_cache[name_no_ext] = item['name']
-                        total_size += item.get('size', 0)
-                CACHED_FILES[page] = temp_cache
-                TOTAL_IMAGES_SIZE[page] = total_size
-                print(f"✅ {page.upper()} loaded: {len(temp_cache)} images, Size: {total_size} bytes.")
-        except Exception as e:
-            print(f"❌ Error {page}: {e}")
-    FILES_LOADED = True
-
-def get_image_url(page, filename):
-    return f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{REPO_NAME}/{BRANCH}/images/{page}/{filename}"
+# --- [FILE] 2. GITHUB FILES (moved to core/services/image_cache_service.py, SG-B-103a) ---
+from core.services.image_cache_service import (
+    CACHED_FILES, TOTAL_IMAGES_SIZE, lock,
+    is_loaded, get_last_refresh, touch_last_refresh,
+    update_file_list, get_image_url,
+)
 
 # --- [FB] 3. FACEBOOK TOOLS ---
 def get_page_token(page_id):
@@ -307,28 +272,27 @@ def process_ceremony_flow(target_id, text, page_id, owner_key):
     if not valid_codes:
         return False
 
-    global LAST_CACHE_REFRESH
-    if not FILES_LOADED:
+    if not is_loaded():
         with lock:
-            if not FILES_LOADED:
+            if not is_loaded():
                 update_file_list()
-                LAST_CACHE_REFRESH = time.time()
+                touch_last_refresh()
 
     current_cache = CACHED_FILES[owner_key]
-    
+
     missing_some = False
     for code in set(valid_codes):
         matched = [k for k in current_cache.keys() if k.startswith(code)]
         if not matched:
             missing_some = True
             break
-            
-    if missing_some and (time.time() - LAST_CACHE_REFRESH > 10):
+
+    if missing_some and (time.time() - get_last_refresh() > 10):
         with lock:
-            if time.time() - LAST_CACHE_REFRESH > 10:
+            if time.time() - get_last_refresh() > 10:
                 print(f"Refreshing cache because ceremony codes were not found")
                 update_file_list()
-                LAST_CACHE_REFRESH = time.time()
+                touch_last_refresh()
                 current_cache = CACHED_FILES[owner_key]
 
     found_imgs    = []
@@ -445,28 +409,27 @@ def process_muteteam(target_id, text, page_id):
     if not valid_codes:
         return
 
-    global LAST_CACHE_REFRESH
-    if not FILES_LOADED:
+    if not is_loaded():
         with lock:
-            if not FILES_LOADED:
+            if not is_loaded():
                 update_file_list()
-                LAST_CACHE_REFRESH = time.time()
+                touch_last_refresh()
 
     current_cache = CACHED_FILES["muteteam"]
-    
+
     missing_some = False
     for booking_code in set(valid_codes):
         matched = [k for k in current_cache.keys() if k.startswith(booking_code)]
         if not matched:
             missing_some = True
             break
-            
-    if missing_some and (time.time() - LAST_CACHE_REFRESH > 10):
+
+    if missing_some and (time.time() - get_last_refresh() > 10):
         with lock:
-            if time.time() - LAST_CACHE_REFRESH > 10:
+            if time.time() - get_last_refresh() > 10:
                 print("Refreshing cache because some Muteteam codes were not found")
                 update_file_list()
-                LAST_CACHE_REFRESH = time.time()
+                touch_last_refresh()
                 current_cache = CACHED_FILES["muteteam"]
 
     # Removed empty folder check to allow auto-reply to trigger
@@ -585,16 +548,15 @@ def webhook():
 # --- [SEARCH] 6. SEARCH API ---
 @app.route('/api/search', methods=['GET'])
 def search_api():
-    global FILES_LOADED
     page = request.args.get('page', '').lower()
     code = request.args.get('code', '').lower().strip()
 
     if page not in ["mahabucha", "muteteam", "muteteam_ceremony"] or not code:
         return jsonify({"found": False, "message": "ข้อมูลไม่ครบ"}), 400
 
-    if not FILES_LOADED:
+    if not is_loaded():
         with lock:
-            if not FILES_LOADED:
+            if not is_loaded():
                 update_file_list()
 
     current_cache = CACHED_FILES.get(page, {})
@@ -620,15 +582,14 @@ def search_api():
 # --- [FILE] 6.5. LIST IMAGES API ---
 @app.route('/api/images', methods=['GET'])
 def list_images_api():
-    global FILES_LOADED
     page = request.args.get('page', '').lower()
 
     if page not in ["mahabucha", "muteteam", "muteteam_ceremony"]:
         return jsonify({"success": False, "message": "ระบุ page ไม่ถูกต้อง"}), 400
 
-    if not FILES_LOADED:
+    if not is_loaded():
         with lock:
-            if not FILES_LOADED:
+            if not is_loaded():
                 update_file_list()
 
     current_cache = CACHED_FILES.get(page, {})
