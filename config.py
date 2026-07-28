@@ -33,14 +33,22 @@ LINE_GROUP_ID_MUTETEAM    = os.environ.get('LINE_GROUP_ID_MUTETEAM')
 
 # จำกัดโดเมนที่อนุญาตให้เรียก API นี้ได้ ตั้งค่าผ่าน env var ALLOWED_ORIGINS
 # (คั่นด้วยจุลภาค เช่น "https://siamganesh.com,https://admin.siamganesh.com")
-# ถ้าไม่ตั้งค่าไว้ จะ fallback เป็น "*" ชั่วคราว พร้อม warning เตือนให้ตั้งค่าจริงก่อนขึ้น production
+#
+# SG-H-100: fail-closed. Previously, an unset ALLOWED_ORIGINS silently
+# fell back to "*" (every origin allowed) with just a printed warning —
+# easy to miss in production logs, and the app would boot and serve
+# traffic with CORS effectively disabled. Now the app refuses to start
+# at all if this isn't configured, so a missing/misconfigured deploy
+# env fails loudly instead of shipping an open CORS policy.
 _allowed_origins_env = os.environ.get('ALLOWED_ORIGINS', '').strip()
-if _allowed_origins_env:
-    # rstrip trailing "/" — browsers never include a trailing slash in the
-    # Origin header, so a misconfigured env var with one would silently
-    # block every real request's CORS check.
-    ALLOWED_ORIGINS = [o.strip().rstrip('/') for o in _allowed_origins_env.split(',') if o.strip()]
-else:
-    ALLOWED_ORIGINS = "*"
-    print("⚠️  WARNING: ALLOWED_ORIGINS ไม่ได้ตั้งค่า — CORS เปิดรับทุกโดเมนชั่วคราว "
-          "กรุณาตั้งค่า ALLOWED_ORIGINS ก่อนใช้งานจริง (production)")
+if not _allowed_origins_env:
+    raise RuntimeError(
+        "ALLOWED_ORIGINS ไม่ได้ตั้งค่า — ต้องระบุโดเมนที่อนุญาตให้เรียก API นี้ได้ "
+        "ก่อนเริ่มแอป (คั่นด้วยจุลภาค เช่น "
+        "\"https://siamganesh.com,https://admin.siamganesh.com\"); "
+        "ไม่ fallback เป็น \"*\" อีกต่อไปเพื่อไม่ให้ CORS เปิดรับทุกโดเมนโดยไม่ได้ตั้งใจ"
+    )
+# rstrip trailing "/" — browsers never include a trailing slash in the
+# Origin header, so a misconfigured env var with one would silently
+# block every real request's CORS check.
+ALLOWED_ORIGINS = [o.strip().rstrip('/') for o in _allowed_origins_env.split(',') if o.strip()]
