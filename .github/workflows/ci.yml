@@ -22,5 +22,12 @@ jobs:
       - name: Syntax check
         run: python -m py_compile app.py
 
+      - name: Enforce blueprint HTTP-client boundary
+        run: |
+          if rg -n '^import requests|^from requests' core/blueprints --glob '*.py'; then
+            echo "Blueprints must use a client wrapper instead of requests directly."
+            exit 1
+          fi
+
       - name: Run tests
         run: pytest tests/ -v
