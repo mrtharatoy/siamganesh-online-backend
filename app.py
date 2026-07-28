@@ -24,6 +24,10 @@ CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
 # SG-B-106) rather than a direct import, to avoid a circular import.
 app.server_start_time = datetime.now()
 
+# --- Centralized error handlers (SG-B-107) ---
+from core.errors import register_error_handlers
+register_error_handlers(app)
+
 # --- [FILE] 2. GITHUB FILES (moved to core/services/image_cache_service.py, SG-B-103a) ---
 # CACHED_FILES/TOTAL_IMAGES_SIZE/lock/is_loaded/get_image_url have no
 # remaining direct callers in app.py now that the images (SG-B-103) and
