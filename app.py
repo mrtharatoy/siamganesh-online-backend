@@ -15,8 +15,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from config import (
-    GITHUB_USERNAME, REPO_NAME, BRANCH,
-    GITHUB_TOKEN, GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY,
+    GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY,
     LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA,
     LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM, LINE_GROUP_ID_MAHABUCHA,
     LINE_GROUP_ID_MUTETEAM, ALLOWED_ORIGINS,
@@ -28,10 +27,12 @@ CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
 SERVER_START_TIME = datetime.now()
 
 # --- [FILE] 2. GITHUB FILES (moved to core/services/image_cache_service.py, SG-B-103a) ---
+# GITHUB_USERNAME/REPO_NAME/BRANCH/GITHUB_TOKEN and get_last_refresh/
+# touch_last_refresh have no remaining direct callers in app.py now that
+# the images blueprint (SG-B-103) and messenger service (SG-B-102a) own
+# every call site that needed them.
 from core.services.image_cache_service import (
-    CACHED_FILES, TOTAL_IMAGES_SIZE, lock,
-    is_loaded, get_last_refresh, touch_last_refresh,
-    update_file_list, get_image_url,
+    CACHED_FILES, TOTAL_IMAGES_SIZE, lock, is_loaded, update_file_list, get_image_url,
 )
 
 # --- [FB] 3. FACEBOOK TOOLS (moved to core/clients/facebook_client.py, SG-B-102) ---
@@ -125,236 +126,9 @@ def search_api():
             }), 200
         return jsonify({"found": False, "message": "ไม่พบรูปภาพ"}), 404
 
-# --- [FILE] 6.5. LIST IMAGES API ---
-@app.route('/api/images', methods=['GET'])
-def list_images_api():
-    page = request.args.get('page', '').lower()
-
-    if page not in ["mahabucha", "muteteam", "muteteam_ceremony"]:
-        return jsonify({"success": False, "message": "ระบุ page ไม่ถูกต้อง"}), 400
-
-    if not is_loaded():
-        with lock:
-            if not is_loaded():
-                update_file_list()
-
-    current_cache = CACHED_FILES.get(page, {})
-    
-    results = []
-    for key, filename in current_cache.items():
-        code = key.split('_')[0] if '_' in key else key
-        results.append({
-            "code": code.upper(),
-            "filename": filename,
-            "image_url": get_image_url(page, filename)
-        })
-        
-    return jsonify({"success": True, "results": results, "count": len(results)}), 200
-
-# --- [SYNC] 7. RELOAD CACHE API ---
-@app.route('/api/reload', methods=['POST'])
-def reload_cache():
-    threading.Thread(target=update_file_list, daemon=True).start()
-    return jsonify({"message": "กำลัง reload cache..."}), 200
-
-# --- [UPLOAD] 8. UPLOAD IMAGE API ---
-@app.route('/api/upload-image', methods=['POST'])
-def upload_image():
-    body = request.get_json(silent=True)
-    if not body:
-        return jsonify({"success": False, "message": "ไม่มีข้อมูล"}), 400
-
-    booking_code = body.get("booking_code", "").strip()
-    images       = body.get("images", [])
-    owner        = body.get("owner", "muteteam").strip()
-
-    if not booking_code or not images:
-        return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
-
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept":        "application/vnd.github.v3+json",
-        "User-Agent":    "Siamganesh-Bot",
-    }
-
-    uploaded = []
-    errors   = []
-
-    for img in images:
-        index    = img.get("index", 1)
-        ext      = img.get("ext", "webp").lstrip(".")
-        data_b64 = img.get("data", "")
-
-        if not data_b64:
-            continue
-
-        filename  = f"{booking_code}_{index}.{ext}"
-        file_path = f"images/muteteam/{filename}"
-        api_url   = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}"
-
-        if owner == "muteteam":
-            if GITHUB_TOKEN:
-                sha = None
-                check = requests.get(api_url, headers=headers, timeout=10)
-                if check.status_code == 200:
-                    sha = check.json().get("sha")
-
-                payload = {
-                    "message": f"Upload photo: {filename}",
-                    "content": data_b64,
-                    "branch":  BRANCH,
-                }
-                if sha:
-                    payload["sha"] = sha
-
-                r = requests.put(api_url, headers=headers, json=payload, timeout=30)
-                if r.status_code in (200, 201):
-                    uploaded.append(filename)
-                    print(f"OK Uploaded to GitHub: {filename}")
-                else:
-                    err = r.json().get("message", "unknown error")
-                    errors.append(f"GitHub {filename}: {err}")
-                    print(f"FAIL GitHub {filename}: {err}")
-            else:
-                print("Skipped GitHub upload (No Token)")
-        else:
-            # Mahabucha, just count it as "uploaded" so it succeeds
-            uploaded.append(filename)
-
-
-
-    if uploaded:
-        threading.Thread(target=update_file_list, daemon=True).start()
-
-    return jsonify({
-        "success": len(uploaded) > 0,
-        "uploaded": uploaded,
-        "errors":   errors,
-        "message":  f"อัปโหลดสำเร็จ {len(uploaded)}/{len(images)} รูป",
-    }), 200 if uploaded else 500
-
-# --- [UPLOAD] 8.5. UPLOAD GITHUB RAW API ---
-@app.route('/api/upload-github-raw', methods=['POST'])
-def upload_github_raw():
-    body = request.get_json(silent=True)
-    if not body:
-        return jsonify({"success": False, "message": "ไม่มีข้อมูล"}), 400
-
-    owner  = body.get("owner", "").strip()
-    images = body.get("images", [])
-
-    if not owner or not images:
-        return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
-
-    if not GITHUB_TOKEN:
-        return jsonify({"success": False, "message": "ไม่มี GITHUB_TOKEN"}), 500
-
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept":        "application/vnd.github.v3+json",
-        "User-Agent":    "Siamganesh-Bot",
-    }
-
-    uploaded = []
-    errors   = []
-
-    for img in images:
-        filename = img.get("filename", "")
-        data_b64 = img.get("data", "")
-
-        if not filename or not data_b64:
-            continue
-
-        file_path = f"images/{owner}/{filename}"
-        api_url   = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}"
-
-        sha = None
-        check = requests.get(api_url, headers=headers, timeout=10)
-        if check.status_code == 200:
-            sha = check.json().get("sha")
-
-        payload = {
-            "message": f"Upload raw photo: {filename}",
-            "content": data_b64,
-            "branch":  BRANCH,
-        }
-        if sha:
-            payload["sha"] = sha
-
-        r = requests.put(api_url, headers=headers, json=payload, timeout=30)
-        if r.status_code in (200, 201):
-            uploaded.append(filename)
-            print(f"OK Uploaded RAW to GitHub: {filename}")
-        else:
-            err = r.json().get("message", "unknown error")
-            errors.append(f"GitHub {filename}: {err}")
-            print(f"FAIL GitHub RAW {filename}: {err}")
-
-    if uploaded:
-        threading.Thread(target=update_file_list, daemon=True).start()
-
-    return jsonify({
-        "success": len(uploaded) > 0,
-        "uploaded": uploaded,
-        "errors":   errors,
-        "message":  f"อัปโหลดสำเร็จ {len(uploaded)}/{len(images)} รูป",
-    }), 200 if uploaded else 500
-
-# --- [DELETE] 9. DELETE IMAGE API ---
-@app.route('/api/delete-image', methods=['POST'])
-def delete_image():
-    if not GITHUB_TOKEN:
-        return jsonify({"success": False, "message": "ไม่มี GITHUB_TOKEN"}), 500
-
-    body = request.get_json(silent=True)
-    if not body:
-        return jsonify({"success": False, "message": "ไม่มีข้อมูล"}), 400
-
-    page     = body.get("page", "").lower().strip()
-    filename = body.get("filename", "").strip()
-
-    if page not in ["mahabucha", "muteteam", "muteteam_ceremony"] or not filename:
-        return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
-
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept":        "application/vnd.github.v3+json",
-        "User-Agent":    "Siamganesh-Bot",
-    }
-
-    file_path = f"images/{page}/{filename}"
-    api_url   = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}?ref={BRANCH}"
-
-    check = requests.get(api_url, headers=headers, timeout=10)
-    
-    success = False
-    msg = ""
-
-    if check.status_code == 200:
-        sha = check.json().get("sha")
-        payload = {
-            "message": f"Delete photo: {filename}",
-            "sha":     sha,
-            "branch":  BRANCH,
-        }
-        # URL for DELETE is the same but without ref parameter in path (pass it in body)
-        delete_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/{file_path}"
-        r = requests.delete(delete_url, headers=headers, json=payload, timeout=30)
-        
-        if r.status_code in (200, 201):
-            threading.Thread(target=update_file_list, daemon=True).start()
-            success = True
-            msg = "ลบไฟล์ออกจาก GitHub สำเร็จ"
-        else:
-            err = r.json().get("message", "unknown error")
-            msg = f"ลบไฟล์จาก GitHub ไม่สำเร็จ: {err}"
-    else:
-        msg = f"ไม่พบไฟล์ใน GitHub หรือข้ามไป ({check.status_code})"
-
-    if success:
-        return jsonify({"success": True, "message": msg}), 200
-    else:
-        return jsonify({"success": False, "message": msg}), 500
+# --- [FILE] 6.5 / 7 / 8 / 8.5 / 9 IMAGES API (moved to core/blueprints/images.py, SG-B-103) ---
+from core.blueprints.images import images_bp
+app.register_blueprint(images_bp)
 
 # --- [MAIL] 10. GENERATE THANK YOU MESSAGE API ---
 @app.route('/api/generate-message', methods=['GET'])

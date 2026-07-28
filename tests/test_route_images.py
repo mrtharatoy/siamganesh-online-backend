@@ -9,12 +9,14 @@ test here mocks `requests.get/put/delete` explicitly rather than
 relying on any live network access, per conftest.py's "no real network
 in tests" policy. GITHUB_TOKEN is unset in the test environment
 (conftest.py does not set it), so tests that need a token present
-patch `app_module.GITHUB_TOKEN` directly, the same pattern already
-used for GEMINI_API_KEY-style constants in test_ceremony_flow.py.
+patch it on core.blueprints.images (SG-B-103 -- where these routes now
+live and look the name up from), not on the app module.
 """
 from unittest import mock
 
 import pytest
+
+import core.blueprints.images as images_blueprint
 
 
 @pytest.fixture
@@ -38,9 +40,7 @@ def test_upload_image_400_when_required_fields_missing(client):
     assert resp.get_json() == {"success": False, "message": "ข้อมูลไม่ครบ"}
 
 
-def test_upload_image_mahabucha_owner_always_counts_as_uploaded_without_github_call(
-    app_module, client
-):
+def test_upload_image_mahabucha_owner_always_counts_as_uploaded_without_github_call(client):
     # Documented quirk (API_BASELINE.md #7): owner != "muteteam" never
     # calls GitHub at all, but is still reported as a successful upload.
     # "uploaded" is still non-empty here, so the route spawns a
@@ -48,7 +48,7 @@ def test_upload_image_mahabucha_owner_always_counts_as_uploaded_without_github_c
     # that stray thread can't make a real GitHub API call and mutate
     # global CACHED_FILES/TOTAL_IMAGES_SIZE state for other tests.
     with mock.patch("requests.get") as mock_get, mock.patch("requests.put") as mock_put, \
-         mock.patch.object(app_module, "update_file_list"):
+         mock.patch.object(images_blueprint, "update_file_list"):
         resp = client.post(
             "/api/upload-image",
             json={
@@ -66,10 +66,10 @@ def test_upload_image_mahabucha_owner_always_counts_as_uploaded_without_github_c
     mock_put.assert_not_called()
 
 
-def test_upload_image_muteteam_owner_without_github_token_uploads_nothing(app_module, client):
+def test_upload_image_muteteam_owner_without_github_token_uploads_nothing(client):
     # GITHUB_TOKEN is unset in the test env, so the "Skipped GitHub
     # upload (No Token)" branch is taken and nothing succeeds -> 500.
-    assert app_module.GITHUB_TOKEN in (None, "")
+    assert images_blueprint.GITHUB_TOKEN in (None, "")
     resp = client.post(
         "/api/upload-image",
         json={
@@ -84,16 +84,16 @@ def test_upload_image_muteteam_owner_without_github_token_uploads_nothing(app_mo
     assert body["uploaded"] == []
 
 
-def test_upload_image_muteteam_owner_with_token_uploads_via_github(app_module, client):
+def test_upload_image_muteteam_owner_with_token_uploads_via_github(client):
     fake_get_response = mock.Mock(status_code=404)  # no existing file -> no sha
     fake_put_response = mock.Mock(status_code=201)
 
-    with mock.patch.object(app_module, "GITHUB_TOKEN", "fake-token"), mock.patch(
+    with mock.patch.object(images_blueprint, "GITHUB_TOKEN", "fake-token"), mock.patch(
         "requests.get", return_value=fake_get_response
     ) as mock_get, mock.patch(
         "requests.put", return_value=fake_put_response
     ) as mock_put, mock.patch.object(
-        app_module, "update_file_list"
+        images_blueprint, "update_file_list"
     ):
         resp = client.post(
             "/api/upload-image",
@@ -121,8 +121,8 @@ def test_upload_github_raw_400_when_fields_missing(client):
     assert resp.get_json()["success"] is False
 
 
-def test_upload_github_raw_500_when_no_github_token(app_module, client):
-    assert app_module.GITHUB_TOKEN in (None, "")
+def test_upload_github_raw_500_when_no_github_token(client):
+    assert images_blueprint.GITHUB_TOKEN in (None, "")
     resp = client.post(
         "/api/upload-github-raw",
         json={"owner": "muteteam", "images": [{"filename": "a.jpg", "data": "ZmFrZQ=="}]},
@@ -131,14 +131,14 @@ def test_upload_github_raw_500_when_no_github_token(app_module, client):
     assert resp.get_json() == {"success": False, "message": "ไม่มี GITHUB_TOKEN"}
 
 
-def test_upload_github_raw_success_with_token(app_module, client):
+def test_upload_github_raw_success_with_token(client):
     fake_get_response = mock.Mock(status_code=404)
     fake_put_response = mock.Mock(status_code=201)
 
-    with mock.patch.object(app_module, "GITHUB_TOKEN", "fake-token"), mock.patch(
+    with mock.patch.object(images_blueprint, "GITHUB_TOKEN", "fake-token"), mock.patch(
         "requests.get", return_value=fake_get_response
     ), mock.patch("requests.put", return_value=fake_put_response), mock.patch.object(
-        app_module, "update_file_list"
+        images_blueprint, "update_file_list"
     ):
         resp = client.post(
             "/api/upload-github-raw",
@@ -154,29 +154,29 @@ def test_upload_github_raw_success_with_token(app_module, client):
 # --- POST /api/delete-image ---
 
 
-def test_delete_image_500_when_no_github_token(app_module, client):
-    assert app_module.GITHUB_TOKEN in (None, "")
+def test_delete_image_500_when_no_github_token(client):
+    assert images_blueprint.GITHUB_TOKEN in (None, "")
     resp = client.post("/api/delete-image", json={"page": "muteteam", "filename": "a.jpg"})
     assert resp.status_code == 500
     assert resp.get_json() == {"success": False, "message": "ไม่มี GITHUB_TOKEN"}
 
 
-def test_delete_image_400_when_page_invalid_or_filename_missing(app_module, client):
-    with mock.patch.object(app_module, "GITHUB_TOKEN", "fake-token"):
+def test_delete_image_400_when_page_invalid_or_filename_missing(client):
+    with mock.patch.object(images_blueprint, "GITHUB_TOKEN", "fake-token"):
         resp = client.post("/api/delete-image", json={"page": "not-a-real-page", "filename": "a.jpg"})
     assert resp.status_code == 400
     assert resp.get_json()["success"] is False
 
 
-def test_delete_image_success_when_file_exists(app_module, client):
+def test_delete_image_success_when_file_exists(client):
     fake_get_response = mock.Mock(status_code=200)
     fake_get_response.json.return_value = {"sha": "abc123"}
     fake_delete_response = mock.Mock(status_code=200)
 
-    with mock.patch.object(app_module, "GITHUB_TOKEN", "fake-token"), mock.patch(
+    with mock.patch.object(images_blueprint, "GITHUB_TOKEN", "fake-token"), mock.patch(
         "requests.get", return_value=fake_get_response
     ), mock.patch("requests.delete", return_value=fake_delete_response), mock.patch.object(
-        app_module, "update_file_list"
+        images_blueprint, "update_file_list"
     ):
         resp = client.post("/api/delete-image", json={"page": "muteteam", "filename": "a.jpg"})
 
@@ -184,10 +184,10 @@ def test_delete_image_success_when_file_exists(app_module, client):
     assert resp.get_json() == {"success": True, "message": "ลบไฟล์ออกจาก GitHub สำเร็จ"}
 
 
-def test_delete_image_500_when_file_not_found_on_github(app_module, client):
+def test_delete_image_500_when_file_not_found_on_github(client):
     fake_get_response = mock.Mock(status_code=404)
 
-    with mock.patch.object(app_module, "GITHUB_TOKEN", "fake-token"), mock.patch(
+    with mock.patch.object(images_blueprint, "GITHUB_TOKEN", "fake-token"), mock.patch(
         "requests.get", return_value=fake_get_response
     ):
         resp = client.post("/api/delete-image", json={"page": "muteteam", "filename": "a.jpg"})

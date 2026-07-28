@@ -8,15 +8,18 @@ get_page_token() moved to core/clients/facebook_client.py (SG-B-102) and
 has no remaining direct import in app.py, so it's tested via that module
 directly rather than through app_module.
 """
-from config import MAHABUCHA_PAGE_ID, MUTETEAM_PAGE_ID
+from config import MAHABUCHA_PAGE_ID, MUTETEAM_PAGE_ID, GITHUB_USERNAME, REPO_NAME, BRANCH
 from core.clients.facebook_client import get_page_token
 
 
 def test_get_image_url_builds_expected_raw_github_url(app_module):
+    # get_image_url still has a direct import in app.py (search_api,
+    # system_status use it), but GITHUB_USERNAME/REPO_NAME/BRANCH no
+    # longer do -- read those from config directly instead.
     url = app_module.get_image_url("mahabucha", "150AA010001.jpg")
     assert url == (
-        f"https://raw.githubusercontent.com/{app_module.GITHUB_USERNAME}"
-        f"/{app_module.REPO_NAME}/{app_module.BRANCH}/images/mahabucha/150AA010001.jpg"
+        f"https://raw.githubusercontent.com/{GITHUB_USERNAME}"
+        f"/{REPO_NAME}/{BRANCH}/images/mahabucha/150AA010001.jpg"
     )
 
 
