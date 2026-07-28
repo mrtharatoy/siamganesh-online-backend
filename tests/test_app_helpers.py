@@ -1,9 +1,15 @@
 """
-Unit tests for small, side-effect-free helper functions in app.py.
+Unit tests for small, side-effect-free helper functions.
 
 These are pure string-building / lookup helpers that don't touch the
 network, Supabase, or Facebook/LINE APIs, so they can be tested directly.
+
+get_page_token() moved to core/clients/facebook_client.py (SG-B-102) and
+has no remaining direct import in app.py, so it's tested via that module
+directly rather than through app_module.
 """
+from config import MAHABUCHA_PAGE_ID, MUTETEAM_PAGE_ID
+from core.clients.facebook_client import get_page_token
 
 
 def test_get_image_url_builds_expected_raw_github_url(app_module):
@@ -14,23 +20,23 @@ def test_get_image_url_builds_expected_raw_github_url(app_module):
     )
 
 
-def test_get_page_token_returns_mahabucha_token_for_mahabucha_page(app_module):
-    assert app_module.get_page_token(app_module.MAHABUCHA_PAGE_ID) == "test-mahabucha-token"
+def test_get_page_token_returns_mahabucha_token_for_mahabucha_page():
+    assert get_page_token(MAHABUCHA_PAGE_ID) == "test-mahabucha-token"
 
 
-def test_get_page_token_returns_muteteam_token_for_muteteam_page(app_module):
-    assert app_module.get_page_token(app_module.MUTETEAM_PAGE_ID) == "test-muteteam-token"
+def test_get_page_token_returns_muteteam_token_for_muteteam_page():
+    assert get_page_token(MUTETEAM_PAGE_ID) == "test-muteteam-token"
 
 
-def test_get_page_token_compares_as_strings(app_module):
+def test_get_page_token_compares_as_strings():
     # page_id often arrives as a string from the webhook payload even
     # though the configured ID might look numeric; str(...) comparison
     # should still match.
-    assert app_module.get_page_token(str(app_module.MAHABUCHA_PAGE_ID)) == "test-mahabucha-token"
+    assert get_page_token(str(MAHABUCHA_PAGE_ID)) == "test-mahabucha-token"
 
 
 def test_get_page_token_returns_none_for_unknown_page(app_module):
-    assert app_module.get_page_token("9999999999") is None
+    assert get_page_token("9999999999") is None
 
 
 def test_generate_thank_you_message_fallback_uses_generic_name_when_no_names(app_module):
