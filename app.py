@@ -5,7 +5,6 @@ import threading
 import requests
 import time
 import feedparser
-import psutil
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -15,24 +14,23 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from config import (
-    GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY,
-    LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA, LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM,
-    ALLOWED_ORIGINS,
+    GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY, ALLOWED_ORIGINS,
 )
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
 
-SERVER_START_TIME = datetime.now()
+# Read by system_status via flask.current_app (core/blueprints/system.py,
+# SG-B-106) rather than a direct import, to avoid a circular import.
+app.server_start_time = datetime.now()
 
 # --- [FILE] 2. GITHUB FILES (moved to core/services/image_cache_service.py, SG-B-103a) ---
-# GITHUB_USERNAME/REPO_NAME/BRANCH/GITHUB_TOKEN and get_last_refresh/
-# touch_last_refresh have no remaining direct callers in app.py now that
-# the images blueprint (SG-B-103) and messenger service (SG-B-102a) own
-# every call site that needed them.
-from core.services.image_cache_service import (
-    CACHED_FILES, TOTAL_IMAGES_SIZE, lock, is_loaded, update_file_list, get_image_url,
-)
+# CACHED_FILES/TOTAL_IMAGES_SIZE/lock/is_loaded/get_image_url have no
+# remaining direct callers in app.py now that the images (SG-B-103) and
+# system (SG-B-106) blueprints own every call site that needed them.
+# update_file_list() is still called once below to warm the cache at
+# process startup, exactly as before.
+from core.services.image_cache_service import update_file_list
 
 # --- [FB] 3. FACEBOOK TOOLS (moved to core/clients/facebook_client.py, SG-B-102) ---
 # get_page_token/send_fb_action have no remaining direct callers in
@@ -47,80 +45,10 @@ from core.services.image_cache_service import (
 # owns their only call sites (/api/generate-message, /api/debug-gemini).
 
 
-def get_supabase_storage_stats(bucket_name, prefix=""):
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return 0, 0
-    try:
-        base = SUPABASE_URL.rstrip("/")
-        url = f"{base}/storage/v1/object/list/{bucket_name}"
-        headers = {
-            "apikey": SUPABASE_KEY, 
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
-        payload = {"prefix": prefix, "limit": 1000, "offset": 0}
-        r = requests.post(url, headers=headers, json=payload, timeout=10)
-        
-        if r.status_code != 200:
-            return 0, 0
-            
-        data = r.json()
-        count = 0
-        size = 0
-        
-        for item in data:
-            if item.get("id") is None: # It's a folder!
-                folder_name = item.get("name")
-                if folder_name and folder_name != ".emptyFolderPlaceholder":
-                    new_prefix = f"{prefix}{folder_name}/" if prefix else f"{folder_name}/"
-                    sub_count, sub_size = get_supabase_storage_stats(bucket_name, new_prefix)
-                    count += sub_count
-                    size += sub_size
-            else: # It's a file
-                count += 1
-                size += item.get("metadata", {}).get("size", 0)
-                
-        return count, size
-    except Exception as e:
-        print(f"Supabase storage stats error: {e}")
-    return 0, 0
-
 # --- 🌐 5. WEBHOOK (moved to core/blueprints/messenger.py, SG-B-102) ---
 from core.blueprints.messenger import messenger_bp
 app.register_blueprint(messenger_bp)
 
-# --- [SEARCH] 6. SEARCH API ---
-@app.route('/api/search', methods=['GET'])
-def search_api():
-    page = request.args.get('page', '').lower()
-    code = request.args.get('code', '').lower().strip()
-
-    if page not in ["mahabucha", "muteteam", "muteteam_ceremony"] or not code:
-        return jsonify({"found": False, "message": "ข้อมูลไม่ครบ"}), 400
-
-    if not is_loaded():
-        with lock:
-            if not is_loaded():
-                update_file_list()
-
-    current_cache = CACHED_FILES.get(page, {})
-
-    if page == "muteteam":
-        matched = [
-            {"code": key.upper(), "image_url": get_image_url(page, filename)}
-            for key, filename in sorted(current_cache.items())
-            if key.startswith(code)
-        ]
-        if matched:
-            return jsonify({"found": True, "results": matched, "count": len(matched)}), 200
-        return jsonify({"found": False, "message": "ไม่พบรูปภาพ"}), 404
-    else:
-        if code in current_cache:
-            return jsonify({
-                "found": True,
-                "code": code.upper(),
-                "image_url": get_image_url(page, current_cache[code])
-            }), 200
-        return jsonify({"found": False, "message": "ไม่พบรูปภาพ"}), 404
 
 # --- [FILE] 6.5 / 7 / 8 / 8.5 / 9 IMAGES API (moved to core/blueprints/images.py, SG-B-103) ---
 from core.blueprints.images import images_bp
@@ -138,98 +66,9 @@ from core.clients.line_client import send_line_notification
 from core.blueprints.notifications import notifications_bp
 app.register_blueprint(notifications_bp)
 
-@app.route('/api/system-status', methods=['GET'])
-def system_status():
-    uptime = datetime.now() - SERVER_START_TIME
-    cpu_percent = psutil.cpu_percent(interval=None)
-    mem = psutil.virtual_memory()
-    disk = psutil.disk_usage('/')
-
-    # DB connection check
-    db_status = "error"
-    db_latency = 0
-    total_bookings = 0
-    if SUPABASE_URL and SUPABASE_KEY:
-        try:
-            start_t = time.time()
-            base = SUPABASE_URL.rstrip("/")
-            url = f"{base}/rest/v1/bookings?select=id&limit=1"
-            headers = {
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}"
-            }
-            r = requests.get(url, headers=headers, timeout=5)
-            r.raise_for_status()
-            db_latency = int((time.time() - start_t) * 1000)
-            db_status = "ok"
-
-            # Get total count
-            url_count = f"{base}/rest/v1/bookings?select=id"
-            headers_count = headers.copy()
-            headers_count["Prefer"] = "count=exact"
-            headers_count["Range"] = "0-0"
-            r_count = requests.head(url_count, headers=headers_count, timeout=5)
-            content_range = r_count.headers.get("Content-Range", "")
-            if "/" in content_range:
-                total_bookings = int(content_range.split("/")[1])
-        except Exception:
-            pass
-
-    # External APIs check
-    apis = {
-        "gemini_api": bool(GEMINI_API_KEY),
-        "line_notify": bool(LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA or LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM),
-        "timezone": "Asia/Bangkok",
-        "fb_graph": bool(os.environ.get('MUTETEAM_TOKEN') or os.environ.get('MAHABUCHA_TOKEN'))
-    }
-
-    # Background Jobs info
-    jobs = {
-        "trending_news": getattr(app, 'last_trending_news_time', None),
-        "auto_catalog": getattr(app, 'last_auto_catalog_time', None),
-    }
-
-    total_images_github = len(CACHED_FILES.get("mahabucha", {})) + len(CACHED_FILES.get("muteteam", {}))
-    total_images_size_github_mb = (TOTAL_IMAGES_SIZE.get("mahabucha", 0) + TOTAL_IMAGES_SIZE.get("muteteam", 0)) / (1024 * 1024)
-
-    supabase_count, supabase_size = get_supabase_storage_stats("portfolio")
-    supabase_size_mb = supabase_size / (1024 * 1024)
-
-    total_images = total_images_github + supabase_count
-    total_images_size_mb = total_images_size_github_mb + supabase_size_mb
-
-    return jsonify({
-        "server": {
-            "cpu_percent": cpu_percent,
-            "ram_percent": mem.percent,
-            "ram_used_mb": mem.used // (1024*1024),
-            "ram_total_mb": mem.total // (1024*1024),
-            "disk_percent": disk.percent,
-            "uptime_seconds": uptime.total_seconds()
-        },
-        "database": {
-            "status": db_status,
-            "latency_ms": db_latency,
-            "total_bookings": total_bookings,
-            "total_images": total_images,
-            "total_images_size_mb": round(total_images_size_mb, 2)
-        },
-        "storage": {
-            "github": {
-                "count": total_images_github,
-                "size_mb": round(total_images_size_github_mb, 2),
-                "limit_mb": 1024
-            },
-            "supabase": {
-                "count": supabase_count,
-                "size_mb": round(supabase_size_mb, 2),
-                "limit_mb": 1024
-            }
-        },
-        "apis": apis,
-        "jobs": jobs
-    }), 200
-
+# --- [SEARCH] 6 / [SYSTEM] SYSTEM STATUS (moved to core/blueprints/system.py, SG-B-106) ---
+from core.blueprints.system import system_bp
+app.register_blueprint(system_bp)
 
 update_file_list()
 

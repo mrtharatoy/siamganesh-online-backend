@@ -11,13 +11,14 @@ directly rather than through app_module.
 from config import MAHABUCHA_PAGE_ID, MUTETEAM_PAGE_ID, GITHUB_USERNAME, REPO_NAME, BRANCH
 from core.clients.facebook_client import get_page_token
 from core.services.ai_service import generate_thank_you_message
+from core.services.image_cache_service import get_image_url
 
 
-def test_get_image_url_builds_expected_raw_github_url(app_module):
-    # get_image_url still has a direct import in app.py (search_api,
-    # system_status use it), but GITHUB_USERNAME/REPO_NAME/BRANCH no
-    # longer do -- read those from config directly instead.
-    url = app_module.get_image_url("mahabucha", "150AA010001.jpg")
+def test_get_image_url_builds_expected_raw_github_url():
+    # get_image_url has no remaining direct import in app.py now that
+    # search_api/system_status moved to core/blueprints/system.py
+    # (SG-B-106) -- test it directly from image_cache_service instead.
+    url = get_image_url("mahabucha", "150AA010001.jpg")
     assert url == (
         f"https://raw.githubusercontent.com/{GITHUB_USERNAME}"
         f"/{REPO_NAME}/{BRANCH}/images/mahabucha/150AA010001.jpg"
