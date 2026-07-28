@@ -8,15 +8,16 @@ so the database/storage checks inside the route take their documented
 locks in the full response shape from API_BASELINE.md #17 so a future
 refactor can be diffed against it.
 
-CACHED_FILES/TOTAL_IMAGES_SIZE are patched on core.blueprints.system
-(where system_status looks them up from via its image_cache_service
-import), not on the app module.
+CACHED_FILES/TOTAL_IMAGES_SIZE are patched on
+core.services.system_status_service (SG-B-202 -- where the response-
+building logic actually lives and looks them up from now), not on the
+blueprint or app module.
 """
 from unittest import mock
 
 import pytest
 
-import core.blueprints.system as system_blueprint
+import core.services.system_status_service as system_status_service
 
 
 @pytest.fixture
@@ -31,8 +32,8 @@ def test_system_status_shape_and_fallback_values_when_supabase_not_configured(cl
     # that populate CACHED_FILES/TOTAL_IMAGES_SIZE.
     empty_cache = {"mahabucha": {}, "muteteam": {}, "muteteam_ceremony": {}}
     empty_sizes = {"mahabucha": 0, "muteteam": 0, "muteteam_ceremony": 0}
-    with mock.patch.object(system_blueprint, "CACHED_FILES", empty_cache), \
-         mock.patch.object(system_blueprint, "TOTAL_IMAGES_SIZE", empty_sizes):
+    with mock.patch.object(system_status_service, "CACHED_FILES", empty_cache), \
+         mock.patch.object(system_status_service, "TOTAL_IMAGES_SIZE", empty_sizes):
         resp = client.get("/api/system-status")
     assert resp.status_code == 200
     body = resp.get_json()
