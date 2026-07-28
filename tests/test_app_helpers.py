@@ -10,6 +10,7 @@ directly rather than through app_module.
 """
 from config import MAHABUCHA_PAGE_ID, MUTETEAM_PAGE_ID, GITHUB_USERNAME, REPO_NAME, BRANCH
 from core.clients.facebook_client import get_page_token
+from core.services.ai_service import generate_thank_you_message
 
 
 def test_get_image_url_builds_expected_raw_github_url(app_module):
@@ -42,24 +43,24 @@ def test_get_page_token_returns_none_for_unknown_page(app_module):
     assert get_page_token("9999999999") is None
 
 
-def test_generate_thank_you_message_fallback_uses_generic_name_when_no_names(app_module):
+def test_generate_thank_you_message_fallback_uses_generic_name_when_no_names():
     # GEMINI_API_KEY is forced empty in conftest, so this always takes
     # the deterministic fallback() branch (no Gemini network call).
-    msg = app_module.generate_thank_you_message("150AA010001")
+    msg = generate_thank_you_message("150AA010001")
     assert msg == (
         "[PHOTO] ขออนุญาตส่งมอบความสิริมงคลแด่คุณผู้มีจิตศรัทธาครับ "
         "ร่วมอนุโมทนาและรับชมภาพบรรยากาศได้ที่เพจ 'มูเตทีม' นะครับ "
     )
 
 
-def test_generate_thank_you_message_fallback_includes_single_name(app_module):
-    msg = app_module.generate_thank_you_message("150AA010001", person1_name="สมชาย")
+def test_generate_thank_you_message_fallback_includes_single_name():
+    msg = generate_thank_you_message("150AA010001", person1_name="สมชาย")
     assert "คุณสมชาย" in msg
     assert "ขออนุญาตส่งมอบความสิริมงคล" in msg
 
 
-def test_generate_thank_you_message_fallback_includes_both_names(app_module):
-    msg = app_module.generate_thank_you_message(
+def test_generate_thank_you_message_fallback_includes_both_names():
+    msg = generate_thank_you_message(
         "150AA010001", person1_name="สมชาย", person2_name="สมหญิง"
     )
     assert "สมชายและสมหญิง" in msg
