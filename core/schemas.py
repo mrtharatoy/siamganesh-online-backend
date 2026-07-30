@@ -189,22 +189,3 @@ class SendFbMessageManualBody(BaseModel):
         return v
 
 
-class NotifyPhotoBody(BaseModel):
-    """POST /api/notify-photo -- mirrors: owner and booking_code
-    required; person1_name/person2_name/customer_name optional
-    (default None); tray_count optional (defaults to 0, same as the
-    original inline `.get("tray_count", 0)`)."""
-
-    owner: str
-    booking_code: str
-    person1_name: Optional[str] = None
-    person2_name: Optional[str] = None
-    customer_name: Optional[str] = None
-    tray_count: int = 0
-
-    @field_validator("owner", "booking_code")
-    @classmethod
-    def _must_be_present(cls, v):
-        if not v:
-            raise ValueError("required")
-        return v

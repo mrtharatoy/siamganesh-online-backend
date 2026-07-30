@@ -23,8 +23,8 @@ def client(app_module):
     return app_module.app.test_client()
 
 
-def test_ocr_image_500_when_gemini_not_configured(app_module, client):
-    assert app_module.GEMINI_API_KEY == ""
+def test_ocr_image_500_when_gemini_not_configured(client):
+    assert ai_blueprint.GEMINI_API_KEY == ""
     resp = client.post("/api/ocr-image", json={"image": "data:image/png;base64,ZmFrZQ=="})
     assert resp.status_code == 500
     assert resp.get_json() == {"error": "GEMINI_API_KEY is not configured"}

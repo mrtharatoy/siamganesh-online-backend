@@ -69,4 +69,4 @@ def test_system_status_shape_and_fallback_values_when_supabase_not_configured(cl
         "fb_graph": True,  # MAHABUCHA_TOKEN/MUTETEAM_TOKEN are set in conftest
     }
 
-    assert set(body["jobs"].keys()) == {"trending_news", "auto_catalog"}
+    assert set(body["jobs"].keys()) == {"auto_catalog"}

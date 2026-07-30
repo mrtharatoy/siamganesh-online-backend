@@ -12,7 +12,6 @@ from core.schemas import (
     DeleteImageBody,
     GenerateMessageQuery,
     ListImagesQuery,
-    NotifyPhotoBody,
     OcrImageBody,
     SearchQuery,
     SendFbMessageManualBody,
@@ -91,12 +90,3 @@ def test_send_fb_message_manual_body_rejects_missing_psid():
         SendFbMessageManualBody(owner="mahabucha", psid="")
 
 
-def test_notify_photo_body_defaults_tray_count_to_zero():
-    body = NotifyPhotoBody(owner="mahabucha", booking_code="150AA010001")
-    assert body.tray_count == 0
-    assert body.person1_name is None
-
-
-def test_notify_photo_body_rejects_missing_booking_code():
-    with pytest.raises(ValidationError):
-        NotifyPhotoBody(owner="mahabucha", booking_code="")

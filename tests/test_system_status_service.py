@@ -11,9 +11,8 @@ import core.services.system_status_service as service
 
 
 class _FakeApp:
-    def __init__(self, server_start_time, last_trending_news_time=None):
+    def __init__(self, server_start_time):
         self.server_start_time = server_start_time
-        self.last_trending_news_time = last_trending_news_time
 
 
 def test_build_system_status_shape_and_defaults():
@@ -32,7 +31,7 @@ def test_build_system_status_shape_and_defaults():
         "status": "error", "latency_ms": 0, "total_bookings": 0,
         "total_images": 0, "total_images_size_mb": 0.0,
     }
-    assert result["jobs"] == {"trending_news": None, "auto_catalog": None}
+    assert result["jobs"] == {"auto_catalog": None}
 
 
 def test_build_system_status_combines_github_and_supabase_image_totals():

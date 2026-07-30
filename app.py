@@ -4,17 +4,15 @@ import json
 import threading
 import requests
 import time
-import feedparser
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from apscheduler.schedulers.background import BackgroundScheduler
-from bs4 import BeautifulSoup
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from config import (
-    GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY, ALLOWED_ORIGINS,
+    SUPABASE_URL, SUPABASE_KEY, ALLOWED_ORIGINS,
 )
 
 app = Flask(__name__)
@@ -35,7 +33,6 @@ register_error_handlers(app)
 # update_file_list() is still called once below to warm the cache at
 # process startup, exactly as before.
 from core.services.image_cache_service import update_file_list
-from core.clients.gemini_client import generate_content
 
 # --- [FB] 3. FACEBOOK TOOLS (moved to core/clients/facebook_client.py, SG-B-102) ---
 # get_page_token/send_fb_action have no remaining direct callers in
@@ -64,10 +61,12 @@ from core.blueprints.ai import ai_bp
 app.register_blueprint(ai_bp)
 
 # --- [NOTIFY] 11. LINE NOTIFICATIONS (moved to core/blueprints/notifications.py, SG-B-104) ---
-# get_line_token has no remaining direct caller in app.py; send_line_notification
-# is still used by the scheduler functions below (check_trending_news,
-# mahabucha_daily_summary, muteteam_ceremony_daily_summary, muteteam_monthly_summary).
+# send_line_notification is still used by the scheduler functions below
+# (mahabucha_daily_summary, muteteam_ceremony_daily_summary,
+# muteteam_monthly_summary); booking_display_name/send_print_queue_digest
+# back the once-daily print-queue digest jobs (SG-B-2xx).
 from core.clients.line_client import send_line_notification
+from core.services.notification_service import booking_display_name, send_print_queue_digest
 from core.blueprints.notifications import notifications_bp
 app.register_blueprint(notifications_bp)
 
@@ -77,105 +76,134 @@ app.register_blueprint(system_bp)
 
 update_file_list()
 
-# --- [NEWS] 12. TRENDING NEWS SCHEDULER ---
-notified_news_links = set()
-
-def check_trending_news():
-    global notified_news_links
-    
-    # Record job time
-    app.last_trending_news_time = datetime.now().isoformat()
-    
-    if not GEMINI_API_KEY:
-        print("❌ [NEWS] GEMINI_API_KEY missing")
-        return
-
-    # Check database settings to see if it's disabled
-    if SUPABASE_URL and SUPABASE_KEY:
-        base = SUPABASE_URL.rstrip("/")
-        url_settings = f"{base}/system_settings" if base.endswith("/rest/v1") else f"{base}/rest/v1/system_settings"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
-        try:
-            r_set = requests.get(f"{url_settings}?id=eq.trending_news_notify&select=value", headers=headers, timeout=5)
-            if r_set.status_code == 200:
-                data_set = r_set.json()
-                if len(data_set) > 0:
-                    val = data_set[0].get("value", {})
-                    if val.get("enabled") is False:
-                        print("ℹ️ [NEWS] Trending news notification is disabled in settings.")
-                        return
-        except Exception as e:
-            print(f"⚠️ [NEWS] Failed to fetch settings: {e}")
-
+# --- [PRINT] 12. PRINT-QUEUE DIGEST SCHEDULER (SG-B-2xx) ---
+# Replaces the old instant per-booking "notify-photo" push: instead of
+# one LINE message per booking the moment it's created or moved to
+# "waiting_print", each owner gets ONE combined message per day at
+# 16:00 listing everything that qualified that day. Parameterized the
+# same way as _owner_daily_summary below -- one shared body, one thin
+# wrapper per owner -- rather than duplicating the ~60-line query 5
+# times.
+def _owner_print_queue_digest(owner):
     try:
-        feed = feedparser.parse("https://news.google.com/rss/headlines/section/geo/TH?hl=th&gl=TH&ceid=TH:th")
-        entries = feed.entries[:15]
-        
-        # Filter out already notified
-        new_entries = [e for e in entries if getattr(e, 'link', '') not in notified_news_links]
-        if not new_entries:
+        if not SUPABASE_URL or not SUPABASE_KEY:
             return
 
-        headlines_text = "\n".join([f"- {e.title} (URL: {e.link})" for e in new_entries])
-        
-        prompt = f"""
-วิเคราะห์หัวข้อข่าวต่อไปนี้ ว่ามีข่าวที่เป็นกระแสสังคม ข่าวใหญ่ระดับประเทศ ข่าวเกี่ยวกับความเชื่อ/สายมู หรือข่าวที่ส่งผลกระทบต่อจิตใจคน (เช่น ภัยพิบัติ อุบัติเหตุ เรื่องเศร้า หรือเรื่องที่คนกำลังให้ความสนใจ) ที่เหมาะสมกับการนำไปโพสต์ในเพจสายมูเตลูเพื่อเกาะกระแส ส่งกำลังใจ หรือชวนคนมาสวดมนต์ขอพรหรือไม่
+        print(f"[TIMER] [DIGEST] Running print-queue digest check for {owner}...")
+        base = SUPABASE_URL.rstrip("/")
+        rest_base = base if base.endswith("/rest/v1") else f"{base}/rest/v1"
+        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
 
-หัวข้อข่าว:
-{headlines_text}
+        # 1. Check if the digest is enabled for this owner. Reuses the
+        # existing `line_notify_group` setting (same one the Settings
+        # page's "แจ้งเตือน LINE [เพจ]" switches write) -- its meaning
+        # just changed from "send instantly" to "include in the 16:00
+        # digest". A legacy `{"enabled": bool}` shape (predating the
+        # per-owner keys) is honored as a fallback for every owner.
+        url_settings = f"{rest_base}/system_settings"
+        res_settings = requests.get(url_settings, headers=headers, params={"id": "eq.line_notify_group", "select": "value"}, timeout=10)
+        if res_settings.status_code != 200 or not res_settings.json():
+            return
 
-ตอบกลับเป็น JSON Format เท่านั้น โดยมีโครงสร้างดังนี้:
-{{
-  "found": true หรือ false,
-  "title": "หัวข้อข่าวที่เลือก",
-  "link": "ลิงก์ข่าวที่เลือก (ดึงมาจาก URL ใน input)",
-  "reason": "ทำไมถึงเลือกข่าวนี้"
-}}
-ถ้าไม่มีข่าวที่เหมาะสมเลย ให้ตอบ {{"found": false}}
-"""
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"responseMimeType": "application/json"}
-        }
-        r = generate_content(
-            "gemini-1.5-flash", payload, api_version="v1beta", timeout=30,
-            headers={'Content-Type': 'application/json'},
+        setting_val = res_settings.json()[0].get("value", {})
+        enabled = setting_val.get(owner)
+        if enabled is None:
+            enabled = setting_val.get("enabled", True)
+        if not enabled:
+            print(f"[TIMER] [DIGEST] Print-queue digest for {owner} is disabled.")
+            return
+
+        # 2. Fetch every booking for this owner and keep the ones
+        # created today or moved to "waiting_print" today. There's no
+        # `updated_at` column on `bookings` -- activity_logs (a JSON
+        # array of {action, by, timestamp}) is the only record of when
+        # a status change happened, so it's inspected directly rather
+        # than filtered via a query param (same style already used by
+        # _owner_daily_summary below, which filters created_at in
+        # Python after fetching).
+        tz = timezone(timedelta(hours=7))
+        today = datetime.now(tz).date()
+
+        url_bookings = f"{rest_base}/bookings"
+        res_bookings = requests.get(
+            url_bookings, headers=headers,
+            params={
+                "owner": f"eq.{owner}",
+                "select": "booking_code,customer_name,person1_name,person2_name,tray_count,tray_items,created_at,activity_logs",
+            },
+            timeout=15,
         )
-        r.raise_for_status()
-        
-        data = r.json()
-        try:
-            content_text = data['candidates'][0]['content']['parts'][0]['text']
-            result = json.loads(content_text)
-        except Exception as e:
-            print(f"❌ [NEWS] Failed to parse Gemini response: {e}")
+        if res_bookings.status_code != 200:
             return
 
-        if result.get("found"):
-            title = result.get("title")
-            link = result.get("link")
-            
-            msg = (
-                f"[ALERT] [แจ้งเตือนกระแสสังคม]\n"
-                f"พบข่าวที่น่าสนใจ ทำคอนเทนต์เพจ!\n\n"
-                f"[PIN] ข่าว: {title}\n"
-                f"[LINK] แหล่งที่มา: {link}\n\n"
-                f"[HINT] แนะนำให้แอดมินนำไปปรับใช้โพสต์หน้าเพจ ส่งกำลังใจได้เลยครับ"
-            )
-            
-            # Send to both groups
-            send_line_notification('muteteam', msg)
-            send_line_notification('mahabucha', msg)
-            
-            # Mark as notified
-            notified_news_links.add(link)
-            print(f"✅ [NEWS] Sent notification for: {title}")
+        items = []
+        for b in res_bookings.json():
+            created_at_str = b.get("created_at")
+            created_today = False
+            if created_at_str:
+                created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00")).astimezone(tz)
+                created_today = created_at.date() == today
+
+            queued_today = False
+            for log in (b.get("activity_logs") or []):
+                if log.get("action") != "waiting_print":
+                    continue
+                ts = log.get("timestamp")
+                if not ts:
+                    continue
+                try:
+                    log_dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(tz)
+                except ValueError:
+                    continue
+                if log_dt.date() == today:
+                    queued_today = True
+                    break
+
+            if not (created_today or queued_today):
+                continue
+
+            items.append({
+                "booking_code": b.get("booking_code"),
+                "display_name": booking_display_name(
+                    person1_name=b.get("person1_name"),
+                    person2_name=b.get("person2_name"),
+                    customer_name=b.get("customer_name"),
+                ),
+                "tray_count": len(b.get("tray_items") or []) or b.get("tray_count") or 0,
+            })
+
+        if not items:
+            print(f"[TIMER] [DIGEST] No new/queued bookings today for {owner}.")
+            return
+
+        success, err = send_print_queue_digest(owner, items)
+        if success:
+            print(f"✅ [DIGEST] Sent print-queue digest for {owner} ({len(items)} รายการ)")
+        else:
+            print(f"❌ [DIGEST] Failed to send print-queue digest for {owner}: {err}")
 
     except Exception as e:
-        print(f"❌ [NEWS] Error checking trending news: {e}")
+        print(f"❌ [DIGEST] Error in print-queue digest for {owner}: {e}")
+
+
+def mahabucha_print_queue_digest():
+    _owner_print_queue_digest("mahabucha")
+
+
+def muteteam_print_queue_digest():
+    _owner_print_queue_digest("muteteam")
+
+
+def muteteam_ceremony_print_queue_digest():
+    _owner_print_queue_digest("muteteam_ceremony")
+
+
+def laos_print_queue_digest():
+    _owner_print_queue_digest("laos")
+
+
+def ratchaprasong_print_queue_digest():
+    _owner_print_queue_digest("ratchaprasong")
 
 # --- [NEWS] 13. DAILY EVENT SUMMARY SCHEDULER ---
 # Generic per-owner daily summary, parameterized so each "mahabucha
@@ -394,7 +422,11 @@ def muteteam_monthly_summary():
 
 # Start the background scheduler
 scheduler = BackgroundScheduler()
-scheduler.add_job(func=check_trending_news, trigger="interval", hours=1, next_run_time=datetime.now())
+scheduler.add_job(func=mahabucha_print_queue_digest, trigger="cron", hour=16, minute=0, timezone=timezone(timedelta(hours=7)))
+scheduler.add_job(func=muteteam_print_queue_digest, trigger="cron", hour=16, minute=0, timezone=timezone(timedelta(hours=7)))
+scheduler.add_job(func=muteteam_ceremony_print_queue_digest, trigger="cron", hour=16, minute=0, timezone=timezone(timedelta(hours=7)))
+scheduler.add_job(func=laos_print_queue_digest, trigger="cron", hour=16, minute=0, timezone=timezone(timedelta(hours=7)))
+scheduler.add_job(func=ratchaprasong_print_queue_digest, trigger="cron", hour=16, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.add_job(func=mahabucha_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.add_job(func=muteteam_ceremony_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.add_job(func=laos_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))

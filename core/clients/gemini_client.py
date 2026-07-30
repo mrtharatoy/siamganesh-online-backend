@@ -1,13 +1,14 @@
 """
 Google Gemini generateContent API client (SG-B-201), extracted from
-four call sites that each built the same URL pattern inline: app.py's
-check_trending_news scheduler, core/blueprints/ai.py's debug_gemini
-and ocr_image, and core/services/ai_service.py's
-generate_thank_you_message. Different call sites use different API
-versions (v1 vs v1beta) and models, so both are kept as parameters
-rather than hardcoded, and the raw `requests.Response` is returned
-unchanged so every caller's existing status_code/json()/headers
-handling keeps working exactly as before.
+call sites that each built the same URL pattern inline:
+core/blueprints/ai.py's debug_gemini and ocr_image, and
+core/services/ai_service.py's generate_thank_you_message (app.py's old
+check_trending_news scheduler was a fourth call site, removed in
+SG-B-2xx along with the whole trending-news feature). Different call
+sites use different API versions (v1 vs v1beta) and models, so both
+are kept as parameters rather than hardcoded, and the raw
+`requests.Response` is returned unchanged so every caller's existing
+status_code/json()/headers handling keeps working exactly as before.
 """
 import requests
 

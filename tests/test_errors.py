@@ -54,6 +54,6 @@ def test_route_specific_error_responses_are_unaffected(client):
     # A route's own explicit early-return error response must pass
     # through completely unchanged -- the generic handlers only apply
     # to unmatched routes / truly unhandled exceptions.
-    resp = client.post("/api/notify-photo", json={"owner": "mahabucha"})
+    resp = client.get("/api/generate-message")
     assert resp.status_code == 400
-    assert resp.get_json() == {"success": False, "message": "ข้อมูลไม่ครบถ้วน"}
+    assert resp.get_json() == {"success": False, "message": "กรุณาระบุ booking_code"}

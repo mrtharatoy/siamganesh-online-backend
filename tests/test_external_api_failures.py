@@ -108,30 +108,29 @@ def test_send_fb_message_manual_500_json_when_facebook_api_times_out(client):
 # --- LINE timeout (caught internally -> graceful degradation, not a 500) ---
 
 
-def test_notify_photo_degrades_gracefully_when_line_send_times_out(client):
-    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA", "fake-token"), \
-         mock.patch.object(line_client, "LINE_GROUP_ID_MAHABUCHA", "fake-group"), \
+def test_send_line_notification_degrades_gracefully_when_line_send_times_out():
+    # notify-photo (the HTTP route) was removed with the switch to a
+    # once-daily print-queue digest -- send_line_notification itself is
+    # still the thing that talks to LINE and must still degrade
+    # gracefully on timeout, exercised directly here instead of via
+    # that now-removed route.
+    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN", "fake-token"), \
+         mock.patch.object(line_client, "LINE_GROUP_ID", "fake-group"), \
          mock.patch("requests.post", side_effect=requests.exceptions.Timeout("line timed out")):
-        resp = client.post(
-            "/api/notify-photo",
-            json={"owner": "mahabucha", "booking_code": "150AA010001"},
-        )
+        success, err = line_client.send_line_notification("mahabucha", "hello")
 
-    assert resp.status_code == 200
-    body = resp.get_json()
-    assert body["success"] is False
-    assert "line timed out" in body["error"]
+    assert success is False
+    assert "line timed out" in err
 
 
-def test_line_quota_returns_null_for_owner_when_line_api_times_out(client):
-    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM", "fake-token"), \
-         mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN", None), \
+def test_line_quota_returns_null_when_line_api_times_out(client):
+    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN", "fake-token"), \
          mock.patch("requests.get", side_effect=requests.exceptions.Timeout("line timed out")):
         resp = client.get("/api/line-quota")
 
     assert resp.status_code == 200
     body = resp.get_json()
-    assert body["muteteam"] is None
+    assert body["quota"] is None
 
 
 # --- Gemini timeout (caught by the route's own try/except -> route-specific 500 JSON) ---

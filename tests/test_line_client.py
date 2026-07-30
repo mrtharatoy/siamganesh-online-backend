@@ -1,35 +1,44 @@
 """
-Tests for core/clients/line_client.py's fetch_quota (SG-B-201) -- moved
-here from an inline nested function in core/blueprints/notifications.py
-so /api/line-quota no longer builds LINE API requests directly.
-get_line_token/send_line_notification are already covered indirectly
-via tests/test_route_notifications.py.
+Tests for core/clients/line_client.py -- send_line_notification and
+fetch_quota (SG-B-201/SG-B-2xx). All 5 owners now share a single LINE
+channel token and group (LINE_CHANNEL_ACCESS_TOKEN/LINE_GROUP_ID), so
+send_line_notification no longer branches on `owner` for credential
+lookup -- these tests confirm every owner routes to that same
+token/group, and that a missing token/group is reported per the
+`owner` passed in (for logging) without changing which credentials
+are used.
 """
 from unittest import mock
 
 import core.clients.line_client as line_client
 
 
-def test_get_line_token_returns_laos_token_when_configured():
-    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_LAOS", "laos-line-token"):
-        assert line_client.get_line_token("laos") == "laos-line-token"
-
-
-def test_get_line_token_returns_ratchaprasong_token_when_configured():
-    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_RATCHAPRASONG", "ratchaprasong-line-token"):
-        assert line_client.get_line_token("ratchaprasong") == "ratchaprasong-line-token"
-
-
-def test_send_line_notification_uses_mahabucha_group_for_laos_and_ratchaprasong():
-    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_LAOS", "laos-line-token"), \
-         mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN_RATCHAPRASONG", "ratchaprasong-line-token"), \
-         mock.patch.object(line_client, "LINE_GROUP_ID_MAHABUCHA", "mahabucha-group"), \
+def test_send_line_notification_uses_shared_token_and_group_for_every_owner():
+    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN", "shared-token"), \
+         mock.patch.object(line_client, "LINE_GROUP_ID", "shared-group"), \
          mock.patch("requests.post", return_value=mock.Mock(status_code=200)) as mock_post:
-        line_client.send_line_notification("laos", "hello")
-        line_client.send_line_notification("ratchaprasong", "hello")
+        for owner in ("mahabucha", "muteteam", "muteteam_ceremony", "laos", "ratchaprasong"):
+            line_client.send_line_notification(owner, "hello")
 
     groups_used = [call.kwargs["json"]["to"] for call in mock_post.call_args_list]
-    assert groups_used == ["mahabucha-group", "mahabucha-group"]
+    tokens_used = [call.kwargs["headers"]["Authorization"] for call in mock_post.call_args_list]
+    assert groups_used == ["shared-group"] * 5
+    assert tokens_used == ["Bearer shared-token"] * 5
+
+
+def test_send_line_notification_fails_when_token_missing():
+    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN", None):
+        success, err = line_client.send_line_notification("mahabucha", "hello")
+    assert success is False
+    assert "LINE_CHANNEL_ACCESS_TOKEN" in err
+
+
+def test_send_line_notification_fails_when_group_missing():
+    with mock.patch.object(line_client, "LINE_CHANNEL_ACCESS_TOKEN", "shared-token"), \
+         mock.patch.object(line_client, "LINE_GROUP_ID", None):
+        success, err = line_client.send_line_notification("mahabucha", "hello")
+    assert success is False
+    assert "LINE_GROUP_ID" in err
 
 
 def test_fetch_quota_returns_none_when_no_token():

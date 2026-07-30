@@ -29,16 +29,17 @@ GEMINI_API_KEY    = os.environ.get('GEMINI_API_KEY')
 SUPABASE_URL      = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY      = os.environ.get('SUPABASE_KEY')
 
-LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA') or os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM  = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM') or os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_ACCESS_TOKEN_LAOS          = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_LAOS') or os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_ACCESS_TOKEN_RATCHAPRASONG = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_RATCHAPRASONG') or os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_GROUP_ID_MAHABUCHA   = os.environ.get('LINE_GROUP_ID_MAHABUCHA')
-LINE_GROUP_ID_MUTETEAM    = os.environ.get('LINE_GROUP_ID_MUTETEAM')
-# เพจลาว/ราชประสงค์ ใช้กลุ่ม LINE เดียวกับมหาบูชา (ตามที่ผู้ใช้ยืนยัน ไม่ต้องมี group id แยก)
-# -- core/clients/line_client.py routes them straight to
-# LINE_GROUP_ID_MAHABUCHA by name, so no separate constants are needed here.
+# All 5 owners (mahabucha, muteteam, muteteam_ceremony, laos,
+# ratchaprasong) now share a single LINE OA token and a single LINE
+# group -- both sourced from mahabucha's own env vars (falling back to
+# the old generic names for anyone who hasn't renamed their env vars
+# yet). Messages differentiate the page by name in the text instead
+# (see core/services/notification_service.py). Per-owner
+# LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM/_LAOS/_RATCHAPRASONG and
+# LINE_GROUP_ID_MUTETEAM no longer exist -- core/clients/line_client.py
+# has nothing left to route per owner.
+LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA') or os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_GROUP_ID = os.environ.get('LINE_GROUP_ID_MAHABUCHA') or os.environ.get('LINE_GROUP_ID')
 
 # จำกัดโดเมนที่อนุญาตให้เรียก API นี้ได้ ตั้งค่าผ่าน env var ALLOWED_ORIGINS
 # (คั่นด้วยจุลภาค เช่น "https://siamganesh.com,https://admin.siamganesh.com")

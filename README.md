@@ -110,14 +110,10 @@ siamganesh-online-backend/
 | `GEMINI_API_KEY` | Google AI Studio API Key สำหรับเรียกใช้โมเดล Gemini | `AIzaSy...` |
 | `SUPABASE_URL` | URL ของโครงการ Supabase ของคุณ | `https://xxxx.supabase.co` |
 | `SUPABASE_KEY` | Supabase API Key (แนะนำ Service Role Key ในกรณีที่ไม่อยู่ภายใต้ RLS หรือ Anon Key) | `eyJhbGciOi...` |
-| `LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA` | LINE Channel Access Token สำหรับแจ้งเตือนของมหาบูชา | `Rws+...` |
-| `LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM` | LINE Channel Access Token สำหรับแจ้งเตือนของมูเตทีม (ใช้ร่วมกับมูเตทีม งานพิธี) | `Rws+...` |
-| `LINE_CHANNEL_ACCESS_TOKEN_LAOS` | LINE Channel Access Token สำหรับแจ้งเตือนของสยามคเณศ (ลาว) | `Rws+...` |
-| `LINE_CHANNEL_ACCESS_TOKEN_RATCHAPRASONG` | LINE Channel Access Token สำหรับแจ้งเตือนของสยามคเณศ (ราชประสงค์) | `Rws+...` |
-| `LINE_GROUP_ID_MAHABUCHA` | LINE Group ID ปลายทางแจ้งเตือนของมหาบูชา — **ใช้กลุ่มเดียวกันสำหรับลาว/ราชประสงค์ด้วย** (ไม่ต้องตั้ง group id แยก) | `Cxxxxxxxxxxxx` |
-| `LINE_GROUP_ID_MUTETEAM` | LINE Group ID ปลายทางแจ้งเตือนของมูเตทีม | `Cxxxxxxxxxxxx` |
+| `LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA` | LINE Channel Access Token — ใช้ร่วมกันทุกเพจ (มหาบูชา/มูเตทีม/มูเตทีม งานพิธี/ลาว/ราชประสงค์) ตั้งแต่รวม LINE OA เป็นช่องทางเดียว ข้อความแยกความแตกต่างด้วยชื่อเพจในเนื้อหาแทน | `Rws+...` |
+| `LINE_GROUP_ID_MAHABUCHA` | LINE Group ID ปลายทางแจ้งเตือน — ใช้กลุ่มเดียวกันทุกเพจเช่นกัน | `Cxxxxxxxxxxxx` |
 
-> 🌍 **การเพิ่มเพจ/แบรนด์ใหม่ (Adding a new owner)**: ตัวแปร owner ทั้งหมดถูกรวมศูนย์ไว้ที่ `core/owners.py` — การเพิ่มเพจใหม่ที่ทำงานแบบเดียวกับมหาบูชา ทำได้โดยเพิ่ม env vars ชุดข้างต้น (PAGE_ID/TOKEN/LINE token) แล้วเพิ่ม entry ใหม่ใน `OWNERS` dict ของ `core/owners.py` เพียงจุดเดียว ไม่ต้องแก้ if/elif กระจายในหลายไฟล์เหมือนเดิมอีกต่อไป
+> 🌍 **การเพิ่มเพจ/แบรนด์ใหม่ (Adding a new owner)**: ตัวแปร owner ทั้งหมดถูกรวมศูนย์ไว้ที่ `core/owners.py` — การเพิ่มเพจใหม่ที่ทำงานแบบเดียวกับมหาบูชา ทำได้โดยเพิ่ม env vars ชุดข้างต้น (PAGE_ID/TOKEN) แล้วเพิ่ม entry ใหม่ใน `OWNERS` dict ของ `core/owners.py` เพียงจุดเดียว ไม่ต้องแก้ if/elif กระจายในหลายไฟล์เหมือนเดิมอีกต่อไป (LINE token/group ไม่ต้องเพิ่มอะไร — ทุกเพจใช้ร่วมกันอยู่แล้ว)
 
 ---
 

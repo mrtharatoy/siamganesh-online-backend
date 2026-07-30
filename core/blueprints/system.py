@@ -8,10 +8,10 @@ stats, response assembly) moved to core/services/system_status_service.py
 and core/repositories/system_status_repository.py (SG-B-202), so this
 route is now just: build the response via the service, jsonify it.
 
-SERVER_START_TIME / last_trending_news_time / last_auto_catalog_time
-are read via `flask.current_app` rather than a direct `app` import, to
-avoid a circular import back to app.py (see git history for the
-SG-B-106 commit message for the full explanation of that pattern).
+SERVER_START_TIME / last_auto_catalog_time are read via
+`flask.current_app` rather than a direct `app` import, to avoid a
+circular import back to app.py (see git history for the SG-B-106
+commit message for the full explanation of that pattern).
 """
 from flask import Blueprint, request, jsonify, current_app
 from pydantic import ValidationError

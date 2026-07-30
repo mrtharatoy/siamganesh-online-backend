@@ -13,9 +13,7 @@ from datetime import datetime
 
 import psutil
 
-from config import (
-    GEMINI_API_KEY, LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA, LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM,
-)
+from config import GEMINI_API_KEY, LINE_CHANNEL_ACCESS_TOKEN
 from core.repositories.system_status_repository import check_database_health, get_supabase_storage_stats
 from core.services.image_cache_service import CACHED_FILES, TOTAL_IMAGES_SIZE
 
@@ -30,13 +28,15 @@ def build_system_status(app):
 
     apis = {
         "gemini_api": bool(GEMINI_API_KEY),
-        "line_notify": bool(LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA or LINE_CHANNEL_ACCESS_TOKEN_MUTETEAM),
+        "line_notify": bool(LINE_CHANNEL_ACCESS_TOKEN),
         "timezone": "Asia/Bangkok",
         "fb_graph": bool(os.environ.get('MUTETEAM_TOKEN') or os.environ.get('MAHABUCHA_TOKEN'))
     }
 
+    # trending_news removed with the AI trending-news feature (SG-B-2xx);
+    # auto_catalog is a legacy field that was never actually set anywhere
+    # in this codebase (always null) -- kept as-is, not this refactor's scope.
     jobs = {
-        "trending_news": getattr(app, 'last_trending_news_time', None),
         "auto_catalog": getattr(app, 'last_auto_catalog_time', None),
     }
 
