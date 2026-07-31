@@ -13,7 +13,7 @@ from datetime import datetime
 
 import psutil
 
-from config import GEMINI_API_KEY, LINE_CHANNEL_ACCESS_TOKEN
+from config import LINE_CHANNEL_ACCESS_TOKEN
 from core.repositories.system_status_repository import check_database_health, get_supabase_storage_stats
 from core.services.image_cache_service import CACHED_FILES, TOTAL_IMAGES_SIZE
 
@@ -27,7 +27,6 @@ def build_system_status(app):
     db_health = check_database_health()
 
     apis = {
-        "gemini_api": bool(GEMINI_API_KEY),
         "line_notify": bool(LINE_CHANNEL_ACCESS_TOKEN),
         "timezone": "Asia/Bangkok",
         "fb_graph": bool(os.environ.get('MUTETEAM_TOKEN') or os.environ.get('MAHABUCHA_TOKEN'))

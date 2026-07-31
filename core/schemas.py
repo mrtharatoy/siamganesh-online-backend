@@ -65,20 +65,6 @@ class GenerateMessageQuery(BaseModel):
         return v
 
 
-class OcrImageBody(BaseModel):
-    """POST /api/ocr-image -- mirrors: body.image must be present and
-    truthy."""
-
-    image: str
-
-    @field_validator("image")
-    @classmethod
-    def _image_must_be_present(cls, v):
-        if not v:
-            raise ValueError("image is required")
-        return v
-
-
 class ListImagesQuery(BaseModel):
     """GET /api/images -- mirrors: page must be one of PAGE_OWNERS
     after lowercasing."""

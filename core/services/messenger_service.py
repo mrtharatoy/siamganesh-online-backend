@@ -4,7 +4,7 @@ app.py (SG-B-102). Logic unchanged from the original app.py functions
 of the same name -- only the import sources moved (shared image cache
 from core.services.image_cache_service, FB send from
 core.clients.facebook_client, Supabase queries from
-core.repositories.booking_repository, Gemini message generation from
+core.repositories.booking_repository, thank-you message generation from
 core.services.ai_service).
 
 check_and_send_catalog_codes() still relies on `base` staying bound

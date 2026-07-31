@@ -53,8 +53,8 @@ def test_get_page_token_returns_ratchaprasong_token_for_ratchaprasong_page():
 
 
 def test_generate_thank_you_message_fallback_uses_generic_name_when_no_names():
-    # GEMINI_API_KEY is forced empty in conftest, so this always takes
-    # the deterministic fallback() branch (no Gemini network call).
+    # generate_thank_you_message always returns the static template now
+    # that the Gemini branch has been removed.
     msg = generate_thank_you_message("150AA010001")
     assert msg == (
         "[PHOTO] ขออนุญาตส่งมอบความสิริมงคลแด่คุณผู้มีจิตศรัทธาครับ "

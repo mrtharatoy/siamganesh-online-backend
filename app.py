@@ -40,11 +40,12 @@ from core.services.image_cache_service import update_file_list
 
 # --- [PROCESS] 4. MESSAGE PROCESSOR ---
 # Supabase booking/setting queries moved to core/repositories/booking_repository.py
-# (SG-B-102); Gemini thank-you message generation to core/services/ai_service.py
-# (SG-B-102); message routing/matching to core/services/messenger_service.py and
-# core/blueprints/messenger.py (SG-B-102). get_booking_names/generate_thank_you_message
-# have no remaining direct callers in app.py now that the AI blueprint (SG-B-105)
-# owns their only call sites (/api/generate-message, /api/debug-gemini).
+# (SG-B-102); thank-you message generation to core/services/ai_service.py
+# (SG-B-102, Gemini branch removed); message routing/matching to
+# core/services/messenger_service.py and core/blueprints/messenger.py (SG-B-102).
+# get_booking_names/generate_thank_you_message have no remaining direct callers
+# in app.py now that the AI blueprint (SG-B-105) owns their only call site
+# (/api/generate-message).
 
 
 # --- 🌐 5. WEBHOOK (moved to core/blueprints/messenger.py, SG-B-102) ---
@@ -56,7 +57,7 @@ app.register_blueprint(messenger_bp)
 from core.blueprints.images import images_bp
 app.register_blueprint(images_bp)
 
-# --- [MAIL] 10 / [DEBUG] DEBUG GEMINI / [PHOTO] SERVER AI OCR (moved to core/blueprints/ai.py, SG-B-105) ---
+# --- [MAIL] 10 (moved to core/blueprints/ai.py, SG-B-105; Gemini-backed debug/OCR routes removed) ---
 from core.blueprints.ai import ai_bp
 app.register_blueprint(ai_bp)
 

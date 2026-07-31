@@ -5,11 +5,10 @@
 [![Python Version](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-2.x-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-Database-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
-[![Gemini](https://img.shields.io/badge/Google_Gemini-AI-4285F4?style=for-the-badge&logo=google-gemini&logoColor=white)](https://deepmind.google/technologies/gemini/)
 [![Facebook API](https://img.shields.io/badge/Facebook_Graph_API-v19.0-1877F2?style=for-the-badge&logo=facebook&logoColor=white)](https://developers.facebook.com/)
 
 **ระบบ Backend อัตโนมัติ (Flask) สำหรับจัดการและส่งมอบภาพพิธีกรรมทางศาสนา/ความเชื่อ ผ่าน Facebook Messenger Webhook**  
-รองรับการแยกทำงานตามเพจต้นทางแบบ Multi-Page ได้แก่ **มหาบูชา**, **มูเตทีม**, **มูเตทีม (งานพิธี)**, **สยามคเณศ (ลาว)** และ **สยามคเณศ (ราชประสงค์)** พร้อมผสานการทำงานกับ Supabase และ Google Gemini AI
+รองรับการแยกทำงานตามเพจต้นทางแบบ Multi-Page ได้แก่ **มหาบูชา**, **มูเตทีม**, **มูเตทีม (งานพิธี)**, **สยามคเณศ (ลาว)** และ **สยามคเณศ (ราชประสงค์)** พร้อมผสานการทำงานกับ Supabase
 
 </div>
 
@@ -20,7 +19,6 @@
 *   **Multi-Page Messenger Support**: รับข้อความ Webhook จาก Facebook Messenger และแยกกระบวนการทำงานตาม Page ID ได้อย่างแม่นยำ
 *   **Automated Image Delivery**: ตรวจจับรูปแบบข้อความและรหัสบริการ เพื่อส่งภาพถาดถวาย/ภาพพิธีกรรมที่บันทึกไว้ใน GitHub กลับไปให้ผู้ใช้งานทันที
 *   **Supabase Database Integration**: ดึงข้อมูลผู้ศรัทธา (ชื่อภาษาไทย/ชื่อร่วม) จากระบบจองอัตโนมัติด้วยรหัสอ้างอิง 12 หลัก
-*   **Personalized AI Blessing (Gemini 1.5 Flash)**: ขับเคลื่อนด้วยพลัง AI ในการรังสรรค์และสร้างสรรค์ข้อความขอบคุณและคำอวยพรอันเป็นสิริมงคลเฉพาะบุคคลตามบริบทชื่อผู้ศรัทธาอย่างนอบน้อมและดูเป็นธรรมชาติ
 *   **In-Memory Image Caching**: ลดความหน่วงและประหยัด API Rate Limit ของ GitHub ด้วยระบบ Cache ชื่อไฟล์และโครงสร้าง URL ภาพในหน่วยความจำ
 *   **Rich API Endpoints**: มี API เพื่อใช้ควบคุมและทำงานร่วมกับระบบภายนอก เช่น การอัปโหลดภาพด้วย Base64 การสืบค้นภาพ และการรีโหลด Cache
 
@@ -50,8 +48,7 @@ graph TD
         MT -->|ดักจับรหัสจอง 12 หลัก| RegexMT{ตรงกับ Regex?}
         RegexMT -->|ใช่| CacheMT[📂 ค้นหารูปใน GitHub Cache]
         CacheMT -->|พบภาพ| SB[⚡ ดึงชื่อจาก Supabase]
-        SB -->|ได้ชื่อผู้ศรัทธา| Gemini[🤖 Google Gemini AI]
-        Gemini -->|สร้างข้อความอนุโมทนาเฉพาะบุคคล| SendMT[🖼️ ส่งรูปภาพ + ข้อความขอบคุณผ่าน Graph API]
+        SB -->|ได้ชื่อผู้ศรัทธา| SendMT[🖼️ ส่งรูปภาพ + ข้อความขอบคุณ (เทมเพลตคงที่) ผ่าน Graph API]
         RegexMT -->|ไม่ตรง| IgnoreMT[🔇 ข้าม]
         CacheMT -->|ไม่พบภาพ| WaitMT[⏳ ส่งข้อความให้รอคิวทำพิธี]
     end
@@ -77,7 +74,7 @@ siamganesh-online-backend/
 │   ├── owners.py       # 📇 Registry กลางของทุก owner/page (mahabucha, muteteam, muteteam_ceremony, laos, ratchaprasong)
 │   ├── blueprints/      # Route handlers (ai, images, messenger, notifications, system)
 │   ├── services/       # Business logic (messenger_service, image_cache_service, notification_service, ...)
-│   ├── clients/         # External API clients (facebook_client, line_client, github_client, gemini_client)
+│   ├── clients/         # External API clients (facebook_client, line_client, github_client)
 │   ├── repositories/    # Supabase query layer
 │   └── schemas.py       # Pydantic request-validation schemas ต่อ endpoint
 ├── requirements.txt    # รายการ dependencies ที่จำเป็นสำหรับรันระบบ
@@ -107,7 +104,6 @@ siamganesh-online-backend/
 | `RATCHAPRASONG_TOKEN` | Page Access Token ที่ได้จาก Facebook Developer (สยามคเณศ ราชประสงค์) | `EAABw...` |
 | `VERIFY_TOKEN` | โทเค็นความปลอดภัยที่ตั้งเอง เพื่อกรอกในหน้า Messenger Webhook Setup | `SiamGaneshVerifyToken2026` |
 | `GITHUB_TOKEN` | GitHub Personal Access Token (แนะนำแบบ Fine-grained หรือ Classic ที่มีสิทธิ์อ่าน/เขียน content) | `ghp_abcdef...` |
-| `GEMINI_API_KEY` | Google AI Studio API Key สำหรับเรียกใช้โมเดล Gemini | `AIzaSy...` |
 | `SUPABASE_URL` | URL ของโครงการ Supabase ของคุณ | `https://xxxx.supabase.co` |
 | `SUPABASE_KEY` | Supabase API Key (แนะนำ Service Role Key ในกรณีที่ไม่อยู่ภายใต้ RLS หรือ Anon Key) | `eyJhbGciOi...` |
 | `LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA` | LINE Channel Access Token — ใช้ร่วมกันทุกเพจ (มหาบูชา/มูเตทีม/มูเตทีม งานพิธี/ลาว/ราชประสงค์) ตั้งแต่รวม LINE OA เป็นช่องทางเดียว ข้อความแยกความแตกต่างด้วยชื่อเพจในเนื้อหาแทน | `Rws+...` |
@@ -163,7 +159,6 @@ export RATCHAPRASONG_PAGE_ID="your_ratchaprasong_page_id"
 export RATCHAPRASONG_TOKEN="your_ratchaprasong_page_access_token"
 export VERIFY_TOKEN="your_webhook_verify_token"
 export GITHUB_TOKEN="your_github_token"
-export GEMINI_API_KEY="your_gemini_api_key"
 export SUPABASE_URL="your_supabase_url"
 export SUPABASE_KEY="your_supabase_key"
 ```
@@ -252,8 +247,8 @@ python app.py
 
 ---
 
-### 5. สร้างข้อความส่งมอบภาพพิธีด้วย AI
-สร้างประโยคอวยพรและอนุโมทนาขอบคุณส่วนตัว โดยอิงข้อมูลจากฐานข้อมูล Supabase และรังสรรค์ด้วย Gemini
+### 5. สร้างข้อความส่งมอบภาพพิธี
+สร้างข้อความขอบคุณและอนุโมทนา (เทมเพลตคงที่) โดยอิงชื่อผู้ศรัทธาจากฐานข้อมูล Supabase
 
 *   **Endpoint**: `/api/generate-message`
 *   **Method**: `GET`
@@ -271,14 +266,6 @@ python app.py
       "message": "📸 ขออนุญาตส่งมอบความสิริมงคลแด่คุณสมชายและคุณสมหญิงครับ ร่วมอนุโมทนาบุญและรับชมภาพบรรยากาศอันเป็นมงคลจากพิธีนี้ได้เลยนะครับ ขอเทวานุภาพคุ้มครองดลบันดาลให้ประสบแต่ความเจริญรุ่งเรืองครับ 🙏✨"
     }
     ```
-
----
-
-### 6. ทดสอบความพร้อมเชื่อมต่อ Gemini API (Debug)
-*   **Endpoint**: `/api/debug-gemini`
-*   **Method**: `GET`
-*   **Parameters**:
-    *   `booking_code`: (ไม่บังคับ, ค่าเริ่มต้นคือ `TEST001`)
 
 ---
 
@@ -305,7 +292,7 @@ gunicorn app:app --bind 0.0.0.0:5000 --workers 4 --threads 2 --timeout 60
 ## 🛠️ รายการ Libraries ที่ใช้ (Dependencies)
 
 *   **Flask & Flask-CORS**: จัดการ Web Server และ Cross-Origin Resource Sharing
-*   **requests**: จัดการ HTTP Calls ส่งภาพและเชื่อมประสานกับ GitHub API, Gemini API, และ Supabase API
+*   **requests**: จัดการ HTTP Calls ส่งภาพและเชื่อมประสานกับ GitHub API และ Supabase API
 *   **gunicorn**: รันเว็บแอปเพื่อเพิ่มความสามารถของเกตเวย์เซิร์ฟเวอร์ในขั้นตอนการใช้งานจริง (Production)
 
 ---

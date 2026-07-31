@@ -2,7 +2,7 @@
 SG-005: integration tests for external-API failure/timeout paths that
 weren't covered elsewhere. The existing route test files (test_route_*)
 mostly characterize non-200 HTTP *status* responses from GitHub/LINE/
-Facebook/Gemini; none of them exercise a genuinely *raised* exception
+Facebook; none of them exercise a genuinely *raised* exception
 (timeout, connection error) from the underlying `requests` call, which
 is the realistic failure mode in production when an external API is
 unreachable.
@@ -28,20 +28,13 @@ Coverage added here, one client at a time:
   requests calls in try/except and degrade gracefully (False/None)
   instead of raising. Covered here to lock in that resilience with a
   real exception, not just a non-200 status.
-- Gemini (core/clients/gemini_client.py): generate_content itself has
-  no try/except, but every caller (core/blueprints/ai.py's ocr_image
-  and debug_gemini) wraps its call in its own try/except and returns a
-  route-specific JSON 500 -- covered here with a real exception rather
-  than the non-200-status case test_route_ocr.py already covers.
 """
 from unittest import mock
 
 import pytest
 import requests
 
-import core.blueprints.ai as ai_blueprint
 import core.blueprints.images as images_blueprint
-import core.blueprints.messenger as messenger_blueprint
 import core.clients.line_client as line_client
 import core.services.image_upload_service as image_upload_service
 
@@ -131,28 +124,3 @@ def test_line_quota_returns_null_when_line_api_times_out(client):
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["quota"] is None
-
-
-# --- Gemini timeout (caught by the route's own try/except -> route-specific 500 JSON) ---
-
-
-def test_ocr_image_500_when_gemini_call_times_out(client):
-    with mock.patch.object(ai_blueprint, "GEMINI_API_KEY", "fake-key"), mock.patch(
-        "requests.post", side_effect=requests.exceptions.Timeout("gemini timed out")
-    ):
-        resp = client.post("/api/ocr-image", json={"image": "ZmFrZQ=="})
-
-    assert resp.status_code == 500
-    assert resp.get_json() == {"error": "gemini timed out"}
-
-
-def test_debug_gemini_500_when_gemini_call_times_out(client):
-    with mock.patch.object(ai_blueprint, "GEMINI_API_KEY", "fake-key"), mock.patch(
-        "requests.post", side_effect=requests.exceptions.Timeout("gemini timed out")
-    ):
-        resp = client.get("/api/debug-gemini")
-
-    assert resp.status_code == 500
-    body = resp.get_json()
-    assert body["error"] == "gemini timed out"
-    assert body["gemini_key_set"] is True

@@ -12,7 +12,6 @@ from core.schemas import (
     DeleteImageBody,
     GenerateMessageQuery,
     ListImagesQuery,
-    OcrImageBody,
     SearchQuery,
     SendFbMessageManualBody,
     UploadGithubRawBody,
@@ -45,11 +44,6 @@ def test_generate_message_query_strips_booking_code():
 def test_generate_message_query_rejects_blank_booking_code():
     with pytest.raises(ValidationError):
         GenerateMessageQuery(booking_code="   ")
-
-
-def test_ocr_image_body_rejects_empty_image():
-    with pytest.raises(ValidationError):
-        OcrImageBody(image="")
 
 
 def test_list_images_query_rejects_unknown_page():
