@@ -10,7 +10,6 @@ from pydantic import ValidationError
 
 from core.schemas import (
     DeleteImageBody,
-    GenerateMessageQuery,
     ListImagesQuery,
     SearchQuery,
     UploadGithubRawBody,
@@ -34,15 +33,6 @@ def test_search_query_accepts_new_owner_pages(page):
 def test_search_query_rejects_invalid_page_or_empty_code(page, code):
     with pytest.raises(ValidationError):
         SearchQuery(page=page, code=code)
-
-
-def test_generate_message_query_strips_booking_code():
-    assert GenerateMessageQuery(booking_code="  150AA010001  ").booking_code == "150AA010001"
-
-
-def test_generate_message_query_rejects_blank_booking_code():
-    with pytest.raises(ValidationError):
-        GenerateMessageQuery(booking_code="   ")
 
 
 def test_list_images_query_rejects_unknown_page():
@@ -70,4 +60,3 @@ def test_upload_github_raw_body_requires_owner_and_images():
 def test_delete_image_body_normalizes_page_case():
     body = DeleteImageBody(page="MAHABUCHA", filename="a.jpg")
     assert body.page == "mahabucha"
-

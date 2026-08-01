@@ -39,10 +39,6 @@ from core.services.image_cache_service import update_file_list
 from core.blueprints.images import images_bp
 app.register_blueprint(images_bp)
 
-# --- [MAIL] 10 (moved to core/blueprints/ai.py, SG-B-105; Gemini-backed debug/OCR routes removed) ---
-from core.blueprints.ai import ai_bp
-app.register_blueprint(ai_bp)
-
 # --- [NOTIFY] 11. LINE NOTIFICATIONS (moved to core/blueprints/notifications.py, SG-B-104) ---
 # send_line_notification is still used by the scheduler functions below
 # (mahabucha_daily_summary, muteteam_ceremony_daily_summary,

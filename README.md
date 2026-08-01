@@ -45,7 +45,7 @@ siamganesh-online-backend/
 ├── config.py           # โหลด Environment Variables ทั้งหมด
 ├── core/
 │   ├── owners.py       # 📇 Registry กลางของทุก owner/page (mahabucha, muteteam, muteteam_ceremony, laos, ratchaprasong)
-│   ├── blueprints/      # Route handlers (ai, images, notifications, system)
+│   ├── blueprints/      # Route handlers (images, notifications, system)
 │   ├── services/       # Business logic (image_cache_service, notification_service, ...)
 │   ├── clients/         # External API clients (line_client, github_client)
 │   ├── repositories/    # Supabase query layer
@@ -80,6 +80,18 @@ siamganesh-online-backend/
 ## 🖼️ การค้นหาและส่งภาพ
 
 การค้นหารูปด้วยรหัสทำผ่านหน้าแอดมินเท่านั้น ระบบไม่มีการรับหรือส่งข้อความผ่าน Facebook API
+
+หน้าแอดมินใช้ข้อความสำเร็จรูปฝั่ง frontend เพื่อให้แอดมินคัดลอกส่งลูกค้าเอง ระบบนี้ไม่มี API สร้างข้อความด้วย AI และไม่มีการส่งข้อความหาลูกค้าอัตโนมัติ
+
+## ⏰ แจ้งเตือน LINE ตามกำหนดเวลา
+
+Backend ใช้ APScheduler (เวลา Asia/Bangkok) ส่งข้อความไปยัง LINE Group เดียวของระบบ:
+
+- ทุกวัน 16:00: สรุปคิวปริ้นของแต่ละเพจ
+- ทุกวัน 21:00: สรุปยอดงานพิธีของมหาบูชา, มูเตทีมงานพิธี, ลาว และราชประสงค์
+- วันสุดท้ายของเดือน 21:00: สรุปยอดรายเดือนของมูเตทีม
+
+แต่ละงานตรวจค่าเปิด/ปิดจาก `system_settings` ก่อนส่ง จึงควบคุมได้จากหน้า Settings โดยไม่เกี่ยวกับระบบข้อความลูกค้า
 
 ---
 
@@ -177,28 +189,6 @@ python app.py
     ```json
     {
       "message": "กำลัง reload cache..."
-    }
-    ```
-
----
-
-### 5. สร้างข้อความส่งมอบภาพพิธี
-สร้างข้อความขอบคุณและอนุโมทนา (เทมเพลตคงที่) โดยอิงชื่อผู้ศรัทธาจากฐานข้อมูล Supabase
-
-*   **Endpoint**: `/api/generate-message`
-*   **Method**: `GET`
-*   **Parameters**:
-    *   `booking_code`: รหัสการจอง 12 หลัก
-*   **ตัวอย่างการเรียก**:
-    `GET http://localhost:5000/api/generate-message?booking_code=260519142238`
-*   **ผลลัพธ์:**
-    ```json
-    {
-      "success": true,
-      "booking_code": "260519142238",
-      "person1_name": "สมชาย",
-      "person2_name": "สมหญิง",
-      "message": "📸 ขออนุญาตส่งมอบความสิริมงคลแด่คุณสมชายและคุณสมหญิงครับ ร่วมอนุโมทนาบุญและรับชมภาพบรรยากาศอันเป็นมงคลจากพิธีนี้ได้เลยนะครับ ขอเทวานุภาพคุ้มครองดลบันดาลให้ประสบแต่ความเจริญรุ่งเรืองครับ 🙏✨"
     }
     ```
 

@@ -48,21 +48,6 @@ class SearchQuery(BaseModel):
         return v
 
 
-class GenerateMessageQuery(BaseModel):
-    """GET /api/generate-message -- mirrors: booking_code must be
-    non-empty after strip."""
-
-    booking_code: str
-
-    @field_validator("booking_code")
-    @classmethod
-    def _booking_code_must_be_present(cls, v):
-        v = (v or "").strip()
-        if not v:
-            raise ValueError("booking_code is required")
-        return v
-
-
 class ListImagesQuery(BaseModel):
     """GET /api/images -- mirrors: page must be one of PAGE_OWNERS
     after lowercasing."""
@@ -153,4 +138,3 @@ class DeleteImageBody(BaseModel):
         if not v:
             raise ValueError("filename is required")
         return v
-
