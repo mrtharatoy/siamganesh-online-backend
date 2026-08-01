@@ -34,21 +34,7 @@ register_error_handlers(app)
 # process startup, exactly as before.
 from core.services.image_cache_service import update_file_list
 
-# --- [FB] 3. FACEBOOK TOOLS (moved to core/clients/facebook_client.py, SG-B-102) ---
-# get_page_token/send_fb_action have no remaining direct callers in
-# app.py now that the messenger blueprint owns their only call sites.
-
-# --- [PROCESS] 4. MESSAGE PROCESSOR ---
-# Supabase booking/setting queries moved to core/repositories/booking_repository.py
-# (SG-B-102); thank-you message generation to core/services/ai_service.py
-# (SG-B-102, Gemini branch removed); message routing/matching to
-# core/services/messenger_service.py and core/blueprints/messenger.py (SG-B-102).
-# get_booking_names/generate_thank_you_message have no remaining direct callers
-# in app.py now that the AI blueprint (SG-B-105) owns their only call site
-# (/api/generate-message).
-
-
-# --- 🌐 5. WEBHOOK (moved to core/blueprints/messenger.py, SG-B-102) ---
+# --- 🌐 Facebook webhook and authenticated manual-send routes ---
 from core.blueprints.messenger import messenger_bp
 app.register_blueprint(messenger_bp)
 

@@ -5,11 +5,8 @@ Characterization tests for the messenger blueprint routes (SG-B-102):
   GET  /api/debug-webhook
   POST /api/send-fb-message-manual
 
-No test previously existed for any of these three routes. send_fb_action
-is patched on core.services.messenger_service / core.clients.facebook_client
-(wherever the code under test actually looks it up), not on the app
-module, since the blueprint and messenger service own those imports
-directly now.
+Incoming customer messages must not invoke any automatic reply. The manual
+send route is covered separately and remains available to authenticated admins.
 """
 from unittest import mock
 
@@ -48,7 +45,7 @@ def test_webhook_returns_ok_for_non_page_object(client):
     assert resp.get_data(as_text=True) == "ok"
 
 
-def test_webhook_dispatches_process_message_for_a_real_text_message(client):
+def test_webhook_accepts_customer_text_without_sending_an_automatic_reply(client):
     payload = {
         "object": "page",
         "entry": [{
@@ -60,44 +57,15 @@ def test_webhook_dispatches_process_message_for_a_real_text_message(client):
             }],
         }],
     }
-    # Dispatch happens via threading.Thread(target=process_message, ...).start()
-    # in a daemon thread -- patch Thread itself (rather than racing a real
-    # background thread) to deterministically assert what was dispatched.
-    with mock.patch.object(messenger_blueprint.threading, "Thread") as mock_thread_cls:
+    with mock.patch.object(messenger_blueprint, "send_fb_action") as mock_send:
         resp = client.post("/", json=payload)
 
     assert resp.status_code == 200
     assert resp.get_data(as_text=True) == "ok"
-    mock_thread_cls.assert_called_once_with(
-        target=messenger_blueprint.process_message,
-        args=("user1", "150ab01", "123"),
-        daemon=True,
-    )
-    mock_thread_cls.return_value.start.assert_called_once()
+    mock_send.assert_not_called()
 
 
-def test_process_message_routes_laos_page_id_to_ceremony_flow():
-    from config import LAOS_PAGE_ID
-    import core.services.messenger_service as messenger_service
-
-    with mock.patch.object(messenger_service, "process_ceremony_flow") as mock_flow:
-        messenger_service.process_message("user1", "150ab01", LAOS_PAGE_ID)
-
-    mock_flow.assert_called_once_with("user1", "150ab01", LAOS_PAGE_ID, "laos")
-
-
-def test_process_message_routes_unknown_page_id_to_nothing():
-    import core.services.messenger_service as messenger_service
-
-    with mock.patch.object(messenger_service, "process_ceremony_flow") as mock_flow, \
-         mock.patch.object(messenger_service, "process_muteteam") as mock_muteteam:
-        messenger_service.process_message("user1", "150ab01", "no-such-page")
-
-    mock_flow.assert_not_called()
-    mock_muteteam.assert_not_called()
-
-
-def test_webhook_skips_bot_sent_echo_messages(client):
+def test_webhook_accepts_bot_sent_echo_messages_without_responding(client):
     payload = {
         "object": "page",
         "entry": [{
@@ -109,11 +77,10 @@ def test_webhook_skips_bot_sent_echo_messages(client):
             }],
         }],
     }
-    with mock.patch.object(messenger_blueprint, "process_message") as mock_process:
+    with mock.patch.object(messenger_blueprint, "send_fb_action") as mock_send:
         resp = client.post("/", json=payload)
     assert resp.status_code == 200
-    # BOT_SENT_THIS echoes must never be dispatched for (re-)processing.
-    assert mock_process.call_count == 0
+    mock_send.assert_not_called()
 
 
 # --- GET /api/debug-webhook ---

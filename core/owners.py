@@ -6,7 +6,6 @@ knows about. Before this module existed, the set {"mahabucha",
 "muteteam", "muteteam_ceremony"} was duplicated as a hardcoded
 tuple/if-elif-chain in several separate places: core/schemas.py's
 PAGE_OWNERS, core/clients/facebook_client.py's get_page_token,
-core/services/messenger_service.py's process_message routing,
 core/services/image_cache_service.py's CACHED_FILES/update_file_list,
 core/services/notification_service.py's page-name/tray-count
 branching, and core/blueprints/messenger.py's manual-send page
@@ -20,17 +19,12 @@ LINE_CHANNEL_ACCESS_TOKEN_* / LINE_GROUP_ID_* module constants
 directly, which requires those names to be looked up dynamically at
 call time rather than frozen into a registry at import time.)
 
-`style` distinguishes the two existing message-handling flows:
-  - "mahabucha": process_ceremony_flow() handles Messenger replies
-    directly by owner_key; no tray_count line in print-queue LINE
-    notifications.
-  - "muteteam": process_muteteam()'s own 12-digit-code flow; includes
-    the tray_count line.
-New owners that should "work like มหาบูชา" get style="mahabucha".
+`style` distinguishes owners for print-queue LINE notifications:
+  - "mahabucha": no tray_count line.
+  - "muteteam": includes the tray_count line.
 
 `page_id`/`page_token` are None for owners with no Facebook page of
-their own -- muteteam_ceremony piggybacks on muteteam's FB page
-(routed there by message content, not by a separate webhook page_id).
+their own -- muteteam_ceremony uses muteteam's page for manual sends.
 """
 from config import (
     MAHABUCHA_PAGE_ID, MAHABUCHA_TOKEN,

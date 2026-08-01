@@ -25,13 +25,12 @@ def test_build_system_status_shape_and_defaults():
          mock.patch.object(service, "get_supabase_storage_stats", return_value=(0, 0)):
         result = service.build_system_status(fake_app)
 
-    assert set(result.keys()) == {"server", "database", "storage", "apis", "jobs"}
+    assert set(result.keys()) == {"server", "database", "storage", "apis"}
     assert result["server"]["uptime_seconds"] >= 5
     assert result["database"] == {
         "status": "error", "latency_ms": 0, "total_bookings": 0,
         "total_images": 0, "total_images_size_mb": 0.0,
     }
-    assert result["jobs"] == {"auto_catalog": None}
 
 
 def test_build_system_status_combines_github_and_supabase_image_totals():

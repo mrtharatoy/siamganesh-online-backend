@@ -1,12 +1,11 @@
 """
 Messenger blueprint (SG-B-102), extracted from app.py: `/` (Facebook
 webhook verify + receive), `/api/debug-webhook`, and
-`/api/send-fb-message-manual`. Route logic is unchanged from the
-original app.py handlers of the same name -- only the import sources
-moved (business logic already lived in core/services/messenger_service.py
-and core/clients/facebook_client.py since SG-B-102a).
+`/api/send-fb-message-manual`.
+
+Incoming messages are accepted only for Facebook's webhook protocol and
+diagnostics. They must never trigger an automatic text or image reply.
 """
-import threading
 from datetime import datetime
 
 from flask import Blueprint, request, jsonify
@@ -17,7 +16,6 @@ from core.clients.facebook_client import send_fb_action
 from core.clients.supabase_rest_client import get_debug_webhook as fetch_debug_webhook, upsert_debug_webhook
 from core.owners import OWNERS
 from core.schemas import SendFbMessageManualBody
-from core.services.messenger_service import process_message
 
 messenger_bp = Blueprint("messenger", __name__)
 
@@ -61,27 +59,8 @@ def webhook():
                 except Exception as e:
                     print("Debug log error", e)
 
-            if metadata == "BOT_SENT_THIS":
-                print("⏭️ [SKIP] BOT_SENT_THIS")
-                continue
-            if not text:
-                print("⏭️ [SKIP] no text")
-                continue
-
-            # echo = admin พิมพ์จาก inbox → ส่งกลับหา recipient (customer)
-            target_id = recipient_id if is_echo else sender_id
-
-            if not target_id:
-                print("⏭️ [SKIP] no target_id")
-                continue
-
-
-            print(f"[DISPATCH] [DISPATCH] target={target_id} text='{text}'")
-            threading.Thread(
-                target=process_message,
-                args=(target_id, text, page_id),
-                daemon=True
-            ).start()
+            # Customer messages are deliberately not dispatched. Replies can
+            # be sent only through the authenticated manual endpoint.
 
     return "ok", 200
 

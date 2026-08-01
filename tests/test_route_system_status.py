@@ -38,7 +38,7 @@ def test_system_status_shape_and_fallback_values_when_supabase_not_configured(cl
     assert resp.status_code == 200
     body = resp.get_json()
 
-    assert set(body.keys()) == {"server", "database", "storage", "apis", "jobs"}
+    assert set(body.keys()) == {"server", "database", "storage", "apis"}
 
     server = body["server"]
     assert set(server.keys()) == {
@@ -67,5 +67,3 @@ def test_system_status_shape_and_fallback_values_when_supabase_not_configured(cl
         "timezone": "Asia/Bangkok",
         "fb_graph": True,  # MAHABUCHA_TOKEN/MUTETEAM_TOKEN are set in conftest
     }
-
-    assert set(body["jobs"].keys()) == {"auto_catalog"}

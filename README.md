@@ -17,8 +17,8 @@
 ## 🌟 ฟีเจอร์เด่น (Key Features)
 
 *   **Multi-Page Messenger Support**: รับข้อความ Webhook จาก Facebook Messenger และแยกกระบวนการทำงานตาม Page ID ได้อย่างแม่นยำ
-*   **Automated Image Delivery**: ตรวจจับรูปแบบข้อความและรหัสบริการ เพื่อส่งภาพถาดถวาย/ภาพพิธีกรรมที่บันทึกไว้ใน GitHub กลับไปให้ผู้ใช้งานทันที
-*   **Supabase Database Integration**: ดึงข้อมูลผู้ศรัทธา (ชื่อภาษาไทย/ชื่อร่วม) จากระบบจองอัตโนมัติด้วยรหัสอ้างอิง 12 หลัก
+*   **Manual Image Delivery**: แอดมินค้นหาและส่งภาพถาดถวาย/ภาพพิธีกรรมให้ลูกค้าผ่านเครื่องมือที่ยืนยันสิทธิ์แล้ว
+*   **Supabase Database Integration**: จัดเก็บและอ่านข้อมูลการจองและข้อมูลผู้ศรัทธาสำหรับการทำงานของแอดมิน
 *   **In-Memory Image Caching**: ลดความหน่วงและประหยัด API Rate Limit ของ GitHub ด้วยระบบ Cache ชื่อไฟล์และโครงสร้าง URL ภาพในหน่วยความจำ
 *   **Rich API Endpoints**: มี API เพื่อใช้ควบคุมและทำงานร่วมกับระบบภายนอก เช่น การอัปโหลดภาพด้วย Base64 การสืบค้นภาพ และการรีโหลด Cache
 
@@ -28,36 +28,13 @@
 
 ```mermaid
 graph TD
-    User([👤 ผู้ใช้งาน / ลูกค้า]) -->|ส่งข้อความ / รหัส| FB[💬 Facebook Messenger]
-    FB -->|Webhook POST /| Flask[🌶️ Flask Webhook App]
-    Flask -->|find_owner_by_page_id| Owners[(📇 core/owners.py registry)]
-
-    subgraph Webhook Router
-        Owners -->|Page: มหาบูชา / ลาว / ราชประสงค์| MB["📿 Flow มหาบูชา-style<br/>(process_ceremony_flow)"]
-        Owners -->|Page: มูเตทีม| MT[🔮 Flow มูเตทีม]
-    end
-
-    subgraph "มหาบูชา-style Flow (มหาบูชา, มูเตทีม งานพิธี, ลาว, ราชประสงค์)"
-        MB -->|ดักจับรหัสองค์เทพ| RegexMB{ตรงกับ Regex?}
-        RegexMB -->|ใช่| CacheMB[📂 ค้นหารูปใน Cache ตาม owner_key]
-        CacheMB -->|พบภาพ| SendMB[🖼️ ส่งรูปภาพบูชาผ่าน Graph API]
-        RegexMB -->|ไม่พบ/ไม่ตรง| AdminMB[👤 แจ้งเตือนแอดมิน]
-    end
-
-    subgraph มูเตทีม Flow
-        MT -->|ดักจับรหัสจอง 12 หลัก| RegexMT{ตรงกับ Regex?}
-        RegexMT -->|ใช่| CacheMT[📂 ค้นหารูปใน GitHub Cache]
-        CacheMT -->|พบภาพ| SB[⚡ ดึงชื่อจาก Supabase]
-        SB -->|ได้ชื่อผู้ศรัทธา| SendMT[🖼️ ส่งรูปภาพ + ข้อความขอบคุณ (เทมเพลตคงที่) ผ่าน Graph API]
-        RegexMT -->|ไม่ตรง| IgnoreMT[🔇 ข้าม]
-        CacheMT -->|ไม่พบภาพ| WaitMT[⏳ ส่งข้อความให้รอคิวทำพิธี]
-    end
-
-    subgraph GitHub Storage & Cache
-        GitHub[🐙 GitHub Repository] -->|GitHub API| LoadCache[🔄 In-Memory Cache]
-        LoadCache -.-> CacheMB
-        LoadCache -.-> CacheMT
-    end
+    Admin([👤 แอดมิน]) -->|ค้นหารายการ/เลือกรูป| Frontend[🖥️ Admin Frontend]
+    Frontend -->|Authenticated manual request| Flask[🌶️ Flask API]
+    Flask -->|Graph API| FB[💬 Facebook Messenger]
+    Flask -->|อ่านรูป| Cache[📂 Image Cache]
+    GitHub[🐙 GitHub Repository] -->|GitHub API| Cache
+    Supabase[(🗄️ Supabase)] -->|ข้อมูลจอง/รูป| Frontend
+    FB -->|Webhook protocol/diagnostic only| Flask
 ```
 
 > **หมายเหตุ**: `core/owners.py` เป็น registry กลางของทุก owner/page ในระบบ (`mahabucha`, `muteteam`, `muteteam_ceremony`, `laos`, `ratchaprasong`) ใช้แทนที่การ hardcode รายชื่อ owner กระจายอยู่หลายจุด — ดูหัวข้อ [🌍 การเพิ่มเพจ/แบรนด์ใหม่](#-การเพิ่มเพจแบรนด์ใหม่-adding-a-new-owner) ด้านล่าง
@@ -73,7 +50,7 @@ siamganesh-online-backend/
 ├── core/
 │   ├── owners.py       # 📇 Registry กลางของทุก owner/page (mahabucha, muteteam, muteteam_ceremony, laos, ratchaprasong)
 │   ├── blueprints/      # Route handlers (ai, images, messenger, notifications, system)
-│   ├── services/       # Business logic (messenger_service, image_cache_service, notification_service, ...)
+│   ├── services/       # Business logic (image_cache_service, notification_service, ...)
 │   ├── clients/         # External API clients (facebook_client, line_client, github_client)
 │   ├── repositories/    # Supabase query layer
 │   └── schemas.py       # Pydantic request-validation schemas ต่อ endpoint
@@ -113,20 +90,9 @@ siamganesh-online-backend/
 
 ---
 
-## 🔮 รูปแบบของรหัสและการจับคู่ภาพ (Code Pattern Matching)
+## 🖼️ การค้นหาและส่งภาพ
 
-ระบบจะใช้ Regular Expression (Regex) ในการตรวจสอบความถูกต้องของรหัสที่ลูกค้าพิมพ์เข้ามาผ่านแชท ดังนี้:
-
-### 📿 1. เพจสไตล์มหาบูชา (Mahabucha-style: มหาบูชา, มูเตทีม งานพิธี, สยามคเณศ ลาว, สยามคเณศ ราชประสงค์)
-*   **เป้าหมาย**: จับคู่รูปภาพองค์เทพรายบุคคล — logic เดียวกันทุกเพจในกลุ่มนี้ (`process_ceremony_flow`, พารามิเตอร์เดียวคือ `owner_key`)
-*   **รูปแบบ Regex**: `(?:269|999)[a-z]{2}(?:0[1-9]|1[0-9]|20)\d{3}`
-*   **ตัวอย่างรหัสที่ถูกต้อง**: `269aa01234`, `999bc15001`
-*   **การจับคู่ไฟล์**: ค้นหาไฟล์ใน cache ของ owner นั้น ๆ (`images/<owner>/` บน GitHub สำหรับมหาบูชา/มูเตทีม งานพิธี, Supabase Storage สำหรับลาว/ราชประสงค์) ที่ชื่อไฟล์ไม่มี extension ตรงกับรหัส เช่น `269aa01234.jpg`
-
-### 🔮 2. เพจมูเตทีม (Muteteam)
-*   **เป้าหมาย**: จับคู่ผลลัพธ์ภาพพิธีตามรหัสจอง 12 หลัก
-*   **รูปแบบ Regex**: รหัสจอง 12 หลัก (YYMMDDHHmmss) เช่น `260519142238`
-*   **การจับคู่ไฟล์**: ดึงภาพทั้งหมดที่มีคำนำหน้า (Prefix) ตรงกับรหัสจองและเรียงลำดับดัชนี เช่น `260519142238_1.webp`, `260519142238_2.webp` เป็นต้น
+การค้นหารูปด้วยรหัสทำผ่านหน้าแอดมินเท่านั้น และการส่งข้อความหรือรูปผ่าน Facebook ต้องเกิดจากการสั่งของแอดมินผ่าน endpoint แบบ manual เท่านั้น ข้อความที่ลูกค้าส่งเข้า Facebook webhook จะไม่ถูกนำไปจับรหัส ตอบกลับ หรือส่งภาพโดยระบบอีกต่อไป
 
 ---
 

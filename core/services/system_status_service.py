@@ -32,13 +32,6 @@ def build_system_status(app):
         "fb_graph": bool(os.environ.get('MUTETEAM_TOKEN') or os.environ.get('MAHABUCHA_TOKEN'))
     }
 
-    # trending_news removed with the AI trending-news feature (SG-B-2xx);
-    # auto_catalog is a legacy field that was never actually set anywhere
-    # in this codebase (always null) -- kept as-is, not this refactor's scope.
-    jobs = {
-        "auto_catalog": getattr(app, 'last_auto_catalog_time', None),
-    }
-
     total_images_github = len(CACHED_FILES.get("mahabucha", {})) + len(CACHED_FILES.get("muteteam", {}))
     total_images_size_github_mb = (TOTAL_IMAGES_SIZE.get("mahabucha", 0) + TOTAL_IMAGES_SIZE.get("muteteam", 0)) / (1024 * 1024)
 
@@ -77,5 +70,4 @@ def build_system_status(app):
             }
         },
         "apis": apis,
-        "jobs": jobs
     }
