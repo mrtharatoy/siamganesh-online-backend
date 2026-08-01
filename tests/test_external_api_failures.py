@@ -2,7 +2,7 @@
 SG-005: integration tests for external-API failure/timeout paths that
 weren't covered elsewhere. The existing route test files (test_route_*)
 mostly characterize non-200 HTTP *status* responses from GitHub/LINE/
-Facebook; none of them exercise a genuinely *raised* exception
+external APIs; none of them exercise a genuinely *raised* exception
 (timeout, connection error) from the underlying `requests` call, which
 is the realistic failure mode in production when an external API is
 unreachable.
@@ -19,10 +19,6 @@ Coverage added here, one client at a time:
   elsewhere. Needs `app.testing = False` so Flask actually converts the
   exception instead of re-raising it into the test, matching
   test_errors.py's documented reasoning.
-- Facebook (core/clients/facebook_client.py): same shape -- no
-  try/except around `requests.post` in send_fb_action, so
-  /api/send-fb-message-manual's uncaught exception also goes through
-  the generic 500 handler.
 - LINE (core/clients/line_client.py): the opposite shape --
   send_line_notification and fetch_quota both already wrap their
   requests calls in try/except and degrade gracefully (False/None)
@@ -77,21 +73,6 @@ def test_delete_image_500_json_when_github_get_connection_fails(client):
         "requests.get", side_effect=requests.exceptions.ConnectionError("no route to github")
     ):
         resp = client.post("/api/delete-image", json={"page": "muteteam", "filename": "a.jpg"})
-
-    assert resp.status_code == 500
-    assert resp.content_type == "application/json"
-    assert resp.get_json() == {"error": "internal server error"}
-
-
-# --- Facebook timeout (uncaught -> generic 500 JSON) ---
-
-
-def test_send_fb_message_manual_500_json_when_facebook_api_times_out(client):
-    with mock.patch("requests.post", side_effect=requests.exceptions.Timeout("fb timed out")):
-        resp = client.post(
-            "/api/send-fb-message-manual",
-            json={"owner": "mahabucha", "psid": "user1", "message": "hi"},
-        )
 
     assert resp.status_code == 500
     assert resp.content_type == "application/json"

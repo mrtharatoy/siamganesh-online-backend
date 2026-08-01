@@ -34,10 +34,6 @@ register_error_handlers(app)
 # process startup, exactly as before.
 from core.services.image_cache_service import update_file_list
 
-# --- 🌐 Facebook webhook and authenticated manual-send routes ---
-from core.blueprints.messenger import messenger_bp
-app.register_blueprint(messenger_bp)
-
 
 # --- [FILE] 6.5 / 7 / 8 / 8.5 / 9 IMAGES API (moved to core/blueprints/images.py, SG-B-103) ---
 from core.blueprints.images import images_bp

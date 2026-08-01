@@ -8,7 +8,6 @@ flask.current_app itself) so this module has no Flask dependency of
 its own -- the blueprint is the one running inside a request/app
 context and passes `current_app` in.
 """
-import os
 from datetime import datetime
 
 import psutil
@@ -29,7 +28,6 @@ def build_system_status(app):
     apis = {
         "line_notify": bool(LINE_CHANNEL_ACCESS_TOKEN),
         "timezone": "Asia/Bangkok",
-        "fb_graph": bool(os.environ.get('MUTETEAM_TOKEN') or os.environ.get('MAHABUCHA_TOKEN'))
     }
 
     total_images_github = len(CACHED_FILES.get("mahabucha", {})) + len(CACHED_FILES.get("muteteam", {}))

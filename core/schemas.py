@@ -19,8 +19,6 @@ Each schema's docstring names the exact route it replaces and the
 manual check it mirrors, so a diff against the blueprint's git history
 is easy to audit.
 """
-from typing import Optional
-
 from pydantic import BaseModel, field_validator
 
 from core.owners import PAGE_OWNERS
@@ -155,23 +153,4 @@ class DeleteImageBody(BaseModel):
         if not v:
             raise ValueError("filename is required")
         return v
-
-
-class SendFbMessageManualBody(BaseModel):
-    """POST /api/send-fb-message-manual -- mirrors: owner and psid
-    required, message/images optional (images defaults to [], same as
-    the original inline `.get("images", [])`)."""
-
-    owner: str
-    psid: str
-    message: Optional[str] = None
-    images: list = []
-
-    @field_validator("owner", "psid")
-    @classmethod
-    def _must_be_present(cls, v):
-        if not v:
-            raise ValueError("required")
-        return v
-
 

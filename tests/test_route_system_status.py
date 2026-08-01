@@ -61,9 +61,8 @@ def test_system_status_shape_and_fallback_values_when_supabase_not_configured(cl
         "supabase": {"count": 0, "size_mb": 0.0, "limit_mb": 1024},
     }
 
-    # LINE/FB tokens come from conftest.
+    # LINE token comes from conftest.
     assert body["apis"] == {
         "line_notify": False,
         "timezone": "Asia/Bangkok",
-        "fb_graph": True,  # MAHABUCHA_TOKEN/MUTETEAM_TOKEN are set in conftest
     }

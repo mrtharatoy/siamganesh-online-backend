@@ -13,7 +13,6 @@ from core.schemas import (
     GenerateMessageQuery,
     ListImagesQuery,
     SearchQuery,
-    SendFbMessageManualBody,
     UploadGithubRawBody,
     UploadImageBody,
 )
@@ -71,16 +70,4 @@ def test_upload_github_raw_body_requires_owner_and_images():
 def test_delete_image_body_normalizes_page_case():
     body = DeleteImageBody(page="MAHABUCHA", filename="a.jpg")
     assert body.page == "mahabucha"
-
-
-def test_send_fb_message_manual_body_defaults_images_to_empty_list():
-    body = SendFbMessageManualBody(owner="mahabucha", psid="user1")
-    assert body.images == []
-    assert body.message is None
-
-
-def test_send_fb_message_manual_body_rejects_missing_psid():
-    with pytest.raises(ValidationError):
-        SendFbMessageManualBody(owner="mahabucha", psid="")
-
 

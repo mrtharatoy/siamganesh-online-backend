@@ -10,7 +10,7 @@ unconditionally:
 
 Neither of those is safe or desirable to run for real during a test
 suite (network calls, real background threads, live cron jobs hitting
-Facebook/LINE). This conftest neutralizes those specific side
+LINE). This conftest neutralizes those specific side
 effects for the *import itself* so that the rest of app.py's pure
 helper functions can be exercised safely and deterministically, without
 patching or changing any of app.py's actual logic.
@@ -30,17 +30,8 @@ sys.path.insert(0, str(REPO_ROOT))
 # values during tests, and so functions that early-return when
 # Supabase isn't configured take their (side-effect-free)
 # fallback paths instead of trying to hit real external services.
-os.environ["MAHABUCHA_PAGE_ID"] = "1000000001"
-os.environ["MAHABUCHA_TOKEN"] = "test-mahabucha-token"
-os.environ["MUTETEAM_PAGE_ID"] = "2000000002"
-os.environ["MUTETEAM_TOKEN"] = "test-muteteam-token"
-os.environ["LAOS_PAGE_ID"] = "3000000003"
-os.environ["LAOS_TOKEN"] = "test-laos-token"
-os.environ["RATCHAPRASONG_PAGE_ID"] = "4000000004"
-os.environ["RATCHAPRASONG_TOKEN"] = "test-ratchaprasong-token"
 os.environ["SUPABASE_URL"] = ""
 os.environ["SUPABASE_KEY"] = ""
-os.environ["VERIFY_TOKEN"] = "test-verify-token"
 os.environ["ALLOWED_ORIGINS"] = "https://example.com"
 
 

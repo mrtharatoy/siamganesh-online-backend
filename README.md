@@ -5,9 +5,8 @@
 [![Python Version](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-2.x-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-Database-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
-[![Facebook API](https://img.shields.io/badge/Facebook_Graph_API-v19.0-1877F2?style=for-the-badge&logo=facebook&logoColor=white)](https://developers.facebook.com/)
 
-**ระบบ Backend อัตโนมัติ (Flask) สำหรับจัดการและส่งมอบภาพพิธีกรรมทางศาสนา/ความเชื่อ ผ่าน Facebook Messenger Webhook**  
+**ระบบ Backend (Flask) สำหรับจัดการภาพพิธีกรรมทางศาสนา/ความเชื่อ**
 รองรับการแยกทำงานตามเพจต้นทางแบบ Multi-Page ได้แก่ **มหาบูชา**, **มูเตทีม**, **มูเตทีม (งานพิธี)**, **สยามคเณศ (ลาว)** และ **สยามคเณศ (ราชประสงค์)** พร้อมผสานการทำงานกับ Supabase
 
 </div>
@@ -16,8 +15,7 @@
 
 ## 🌟 ฟีเจอร์เด่น (Key Features)
 
-*   **Multi-Page Messenger Support**: รับข้อความ Webhook จาก Facebook Messenger และแยกกระบวนการทำงานตาม Page ID ได้อย่างแม่นยำ
-*   **Manual Image Delivery**: แอดมินค้นหาและส่งภาพถาดถวาย/ภาพพิธีกรรมให้ลูกค้าผ่านเครื่องมือที่ยืนยันสิทธิ์แล้ว
+*   **Manual Image Management**: แอดมินค้นหา ดาวน์โหลด และจัดการภาพพิธีกรรมจากระบบหลังบ้าน
 *   **Supabase Database Integration**: จัดเก็บและอ่านข้อมูลการจองและข้อมูลผู้ศรัทธาสำหรับการทำงานของแอดมิน
 *   **In-Memory Image Caching**: ลดความหน่วงและประหยัด API Rate Limit ของ GitHub ด้วยระบบ Cache ชื่อไฟล์และโครงสร้าง URL ภาพในหน่วยความจำ
 *   **Rich API Endpoints**: มี API เพื่อใช้ควบคุมและทำงานร่วมกับระบบภายนอก เช่น การอัปโหลดภาพด้วย Base64 การสืบค้นภาพ และการรีโหลด Cache
@@ -29,12 +27,10 @@
 ```mermaid
 graph TD
     Admin([👤 แอดมิน]) -->|ค้นหารายการ/เลือกรูป| Frontend[🖥️ Admin Frontend]
-    Frontend -->|Authenticated manual request| Flask[🌶️ Flask API]
-    Flask -->|Graph API| FB[💬 Facebook Messenger]
+    Frontend -->|API request| Flask[🌶️ Flask API]
     Flask -->|อ่านรูป| Cache[📂 Image Cache]
     GitHub[🐙 GitHub Repository] -->|GitHub API| Cache
     Supabase[(🗄️ Supabase)] -->|ข้อมูลจอง/รูป| Frontend
-    FB -->|Webhook protocol/diagnostic only| Flask
 ```
 
 > **หมายเหตุ**: `core/owners.py` เป็น registry กลางของทุก owner/page ในระบบ (`mahabucha`, `muteteam`, `muteteam_ceremony`, `laos`, `ratchaprasong`) ใช้แทนที่การ hardcode รายชื่อ owner กระจายอยู่หลายจุด — ดูหัวข้อ [🌍 การเพิ่มเพจ/แบรนด์ใหม่](#-การเพิ่มเพจแบรนด์ใหม่-adding-a-new-owner) ด้านล่าง
@@ -49,9 +45,9 @@ siamganesh-online-backend/
 ├── config.py           # โหลด Environment Variables ทั้งหมด
 ├── core/
 │   ├── owners.py       # 📇 Registry กลางของทุก owner/page (mahabucha, muteteam, muteteam_ceremony, laos, ratchaprasong)
-│   ├── blueprints/      # Route handlers (ai, images, messenger, notifications, system)
+│   ├── blueprints/      # Route handlers (ai, images, notifications, system)
 │   ├── services/       # Business logic (image_cache_service, notification_service, ...)
-│   ├── clients/         # External API clients (facebook_client, line_client, github_client)
+│   ├── clients/         # External API clients (line_client, github_client)
 │   ├── repositories/    # Supabase query layer
 │   └── schemas.py       # Pydantic request-validation schemas ต่อ endpoint
 ├── requirements.txt    # รายการ dependencies ที่จำเป็นสำหรับรันระบบ
@@ -71,28 +67,19 @@ siamganesh-online-backend/
 
 | ชื่อตัวแปร | คำอธิบายเพิ่มเติม | ตัวอย่างค่า |
 |:---|:---|:---|
-| `MAHABUCHA_PAGE_ID` | หมายเลข ID ของ Facebook Page (มหาบูชา) | `102938475612345` |
-| `MAHABUCHA_TOKEN` | Page Access Token ที่ได้จาก Facebook Developer (มหาบูชา) | `EAABw...` |
-| `MUTETEAM_PAGE_ID` | หมายเลข ID ของ Facebook Page (มูเตทีม) | `564738291012345` |
-| `MUTETEAM_TOKEN` | Page Access Token ที่ได้จาก Facebook Developer (มูเตทีม) | `EAABw...` |
-| `LAOS_PAGE_ID` | หมายเลข ID ของ Facebook Page (สยามคเณศ ลาว) | `1088214627718544` |
-| `LAOS_TOKEN` | Page Access Token ที่ได้จาก Facebook Developer (สยามคเณศ ลาว) | `EAABw...` |
-| `RATCHAPRASONG_PAGE_ID` | หมายเลข ID ของ Facebook Page (สยามคเณศ ราชประสงค์) | `1078784875322540` |
-| `RATCHAPRASONG_TOKEN` | Page Access Token ที่ได้จาก Facebook Developer (สยามคเณศ ราชประสงค์) | `EAABw...` |
-| `VERIFY_TOKEN` | โทเค็นความปลอดภัยที่ตั้งเอง เพื่อกรอกในหน้า Messenger Webhook Setup | `SiamGaneshVerifyToken2026` |
 | `GITHUB_TOKEN` | GitHub Personal Access Token (แนะนำแบบ Fine-grained หรือ Classic ที่มีสิทธิ์อ่าน/เขียน content) | `ghp_abcdef...` |
 | `SUPABASE_URL` | URL ของโครงการ Supabase ของคุณ | `https://xxxx.supabase.co` |
 | `SUPABASE_KEY` | Supabase API Key (แนะนำ Service Role Key ในกรณีที่ไม่อยู่ภายใต้ RLS หรือ Anon Key) | `eyJhbGciOi...` |
 | `LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA` | LINE Channel Access Token — ใช้ร่วมกันทุกเพจ (มหาบูชา/มูเตทีม/มูเตทีม งานพิธี/ลาว/ราชประสงค์) ตั้งแต่รวม LINE OA เป็นช่องทางเดียว ข้อความแยกความแตกต่างด้วยชื่อเพจในเนื้อหาแทน | `Rws+...` |
 | `LINE_GROUP_ID_MAHABUCHA` | LINE Group ID ปลายทางแจ้งเตือน — ใช้กลุ่มเดียวกันทุกเพจเช่นกัน | `Cxxxxxxxxxxxx` |
 
-> 🌍 **การเพิ่มเพจ/แบรนด์ใหม่ (Adding a new owner)**: ตัวแปร owner ทั้งหมดถูกรวมศูนย์ไว้ที่ `core/owners.py` — การเพิ่มเพจใหม่ที่ทำงานแบบเดียวกับมหาบูชา ทำได้โดยเพิ่ม env vars ชุดข้างต้น (PAGE_ID/TOKEN) แล้วเพิ่ม entry ใหม่ใน `OWNERS` dict ของ `core/owners.py` เพียงจุดเดียว ไม่ต้องแก้ if/elif กระจายในหลายไฟล์เหมือนเดิมอีกต่อไป (LINE token/group ไม่ต้องเพิ่มอะไร — ทุกเพจใช้ร่วมกันอยู่แล้ว)
+> 🌍 **การเพิ่มเพจ/แบรนด์ใหม่ (Adding a new owner)**: เพิ่ม entry ใหม่ใน `OWNERS` dict ของ `core/owners.py` เพียงจุดเดียว ไม่ต้องแก้ if/elif กระจายในหลายไฟล์ (LINE token/group ใช้ร่วมกันทุกเพจ)
 
 ---
 
 ## 🖼️ การค้นหาและส่งภาพ
 
-การค้นหารูปด้วยรหัสทำผ่านหน้าแอดมินเท่านั้น และการส่งข้อความหรือรูปผ่าน Facebook ต้องเกิดจากการสั่งของแอดมินผ่าน endpoint แบบ manual เท่านั้น ข้อความที่ลูกค้าส่งเข้า Facebook webhook จะไม่ถูกนำไปจับรหัส ตอบกลับ หรือส่งภาพโดยระบบอีกต่อไป
+การค้นหารูปด้วยรหัสทำผ่านหน้าแอดมินเท่านั้น ระบบไม่มีการรับหรือส่งข้อความผ่าน Facebook API
 
 ---
 
@@ -115,15 +102,6 @@ pip install -r requirements.txt
 บนระบบปฏิบัติการ Mac / Linux คุณสามารถ Export ตัวแปรได้ดังนี้:
 
 ```bash
-export MAHABUCHA_PAGE_ID="your_mahabucha_page_id"
-export MAHABUCHA_TOKEN="your_mahabucha_page_access_token"
-export MUTETEAM_PAGE_ID="your_muteteam_page_id"
-export MUTETEAM_TOKEN="your_muteteam_page_access_token"
-export LAOS_PAGE_ID="your_laos_page_id"
-export LAOS_TOKEN="your_laos_page_access_token"
-export RATCHAPRASONG_PAGE_ID="your_ratchaprasong_page_id"
-export RATCHAPRASONG_TOKEN="your_ratchaprasong_page_access_token"
-export VERIFY_TOKEN="your_webhook_verify_token"
 export GITHUB_TOKEN="your_github_token"
 export SUPABASE_URL="your_supabase_url"
 export SUPABASE_KEY="your_supabase_key"
@@ -141,16 +119,7 @@ python app.py
 
 ## 🌐 API Reference (รายการ Endpoint)
 
-### 1. Webhook Endpoint
-ใช้สำหรับผูกต่อกับระบบ Facebook Webhook
-
-*   **Endpoint**: `/`
-*   **GET**: ใช้สำหรับยืนยันตน (Verification)
-*   **POST**: ใช้สำหรับรับข้อมูล (Messaging Events) จากทาง Facebook เมื่อมีข้อความแชทใหม่เข้ามา
-
----
-
-### 2. ค้นหารูปภาพตามรหัส
+### 1. ค้นหารูปภาพตามรหัส
 *   **Endpoint**: `/api/search`
 *   **Method**: `GET`
 *   **Parameters**:
