@@ -56,6 +56,168 @@ app.register_blueprint(system_bp)
 
 update_file_list()
 
+# Four ceremony pages move a booking to `ready_to_send` after its photos are
+# prepared.  This follow-up deliberately excludes muteteam (daily), whose
+# work is not tied to a single ceremony date.
+PHOTO_DELIVERY_FOLLOWUP_OWNERS = (
+    "mahabucha", "muteteam_ceremony", "laos", "ratchaprasong",
+)
+PHOTO_DELIVERY_FOLLOWUP_SETTING = "photo_delivery_followup"
+PHOTO_DELIVERY_FOLLOWUP_STATE_SETTING = "photo_delivery_followup_state"
+
+
+def _read_setting(rest_base, headers, setting_id):
+    response = requests.get(
+        f"{rest_base}/system_settings", headers=headers,
+        params={"id": f"eq.{setting_id}", "select": "value"}, timeout=10,
+    )
+    if response.status_code != 200:
+        return None
+    rows = response.json()
+    return rows[0].get("value", {}) if rows else {}
+
+
+def _write_setting(rest_base, headers, setting_id, value):
+    response = requests.post(
+        f"{rest_base}/system_settings",
+        headers={**headers, "Prefer": "resolution=merge-duplicates"},
+        json={"id": setting_id, "value": value, "updated_at": datetime.now(timezone.utc).isoformat()},
+        timeout=10,
+    )
+    return response.status_code in (200, 201)
+
+
+def _format_ceremony_date(value):
+    """Format a galleries.event_date without leaking an ISO date to LINE."""
+    return format_thai_date(datetime.strptime(value, "%Y-%m-%d").date())
+
+
+def _owner_photo_delivery_followup(owner):
+    """At 21:00 after a ceremony, report the customers still awaiting photos.
+
+    The state only records ceremonies that have actually had a pending queue.
+    Therefore enabling this automation never produces completion spam for old
+    ceremonies that were already finished before this feature existed.
+    """
+    try:
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            return
+
+        base = SUPABASE_URL.rstrip("/")
+        rest_base = base if base.endswith("/rest/v1") else f"{base}/rest/v1"
+        headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+        enabled_values = _read_setting(rest_base, headers, PHOTO_DELIVERY_FOLLOWUP_SETTING)
+        if not isinstance(enabled_values, dict) or not enabled_values.get(owner, False):
+            print(f"[TIMER] [PHOTO-FOLLOWUP] Disabled for {owner}.")
+            return
+
+        tz = timezone(timedelta(hours=7))
+        today = datetime.now(tz).date()
+        galleries_response = requests.get(
+            f"{rest_base}/galleries", headers=headers,
+            params={"owner": f"eq.{owner}", "event_date": f"lt.{today.isoformat()}", "select": "id,caption,event_date"},
+            timeout=15,
+        )
+        if galleries_response.status_code != 200:
+            return
+        ceremonies = [gallery for gallery in galleries_response.json() if gallery.get("id") and gallery.get("event_date")]
+        if not ceremonies:
+            return
+
+        ceremony_ids = {gallery["id"] for gallery in ceremonies}
+        bookings_response = requests.get(
+            f"{rest_base}/bookings", headers=headers,
+            params={"owner": f"eq.{owner}", "status": "eq.ready_to_send", "select": "gallery_id"},
+            timeout=15,
+        )
+        if bookings_response.status_code != 200:
+            return
+
+        pending_by_gallery = defaultdict(int)
+        for booking in bookings_response.json():
+            gallery_id = booking.get("gallery_id")
+            if gallery_id in ceremony_ids:
+                pending_by_gallery[gallery_id] += 1
+
+        state_values = _read_setting(rest_base, headers, PHOTO_DELIVERY_FOLLOWUP_STATE_SETTING)
+        if state_values is None:
+            return
+        state_values = state_values if isinstance(state_values, dict) else {}
+        owner_state = state_values.get(owner, {}) if isinstance(state_values.get(owner, {}), dict) else {}
+        tracked = set(owner_state.get("tracked_gallery_ids", []))
+        completed = set(owner_state.get("completed_gallery_ids", []))
+
+        pending_ceremonies = [gallery for gallery in ceremonies if pending_by_gallery.get(gallery["id"], 0)]
+        newly_completed = [
+            gallery for gallery in ceremonies
+            if gallery["id"] in tracked and not pending_by_gallery.get(gallery["id"], 0) and gallery["id"] not in completed
+        ]
+
+        page_name = OWNERS.get(owner).display_name if owner in OWNERS else owner
+        date_text = format_thai_date(today)
+        if pending_ceremonies:
+            lines = [
+                "📦 [ติดตามคิวรอส่งภาพ]",
+                f"เพจ: {page_name}",
+                f"วันที่: {date_text}",
+                "สถานะ: รอส่งภาพให้ลูกค้า",
+            ]
+            total = 0
+            for gallery in pending_ceremonies:
+                count = pending_by_gallery[gallery["id"]]
+                total += count
+                lines.append(f"- {gallery.get('caption') or 'ไม่ระบุงานพิธี'} (จัดพิธี {_format_ceremony_date(gallery['event_date'])}): {count} คน")
+            lines.append(f"รวมค้างส่งภาพ {total} คน")
+            send_line_notification(owner, "\n".join(lines))
+            tracked.update(gallery["id"] for gallery in pending_ceremonies)
+            completed.difference_update(gallery["id"] for gallery in pending_ceremonies)
+            print(f"✅ [PHOTO-FOLLOWUP] Sent pending-photo report for {owner} ({total} คน)")
+
+        if newly_completed:
+            lines = [
+                "✅ [ปิดคิวส่งภาพ]",
+                f"เพจ: {page_name}",
+                f"วันที่: {date_text}",
+                "งานพิธีที่ส่งภาพครบแล้ว",
+            ]
+            for gallery in newly_completed:
+                lines.append(f"- {gallery.get('caption') or 'ไม่ระบุงานพิธี'} (จัดพิธี {_format_ceremony_date(gallery['event_date'])})")
+            lines.append("สถานะ: ส่งภาพให้ลูกค้าครบแล้ว")
+            success, error = send_line_notification(owner, "\n".join(lines))
+            if success:
+                completed.update(gallery["id"] for gallery in newly_completed)
+                print(f"✅ [PHOTO-FOLLOWUP] Sent completion report for {owner} ({len(newly_completed)} งาน)")
+            else:
+                print(f"❌ [PHOTO-FOLLOWUP] Failed completion report for {owner}: {error}")
+
+        next_owner_state = {
+            "tracked_gallery_ids": sorted(tracked),
+            "completed_gallery_ids": sorted(completed),
+        }
+        if next_owner_state != owner_state:
+            state_values[owner] = next_owner_state
+            if not _write_setting(rest_base, headers, PHOTO_DELIVERY_FOLLOWUP_STATE_SETTING, state_values):
+                print(f"❌ [PHOTO-FOLLOWUP] Could not persist follow-up state for {owner}.")
+
+    except Exception as error:
+        print(f"❌ [PHOTO-FOLLOWUP] Error for {owner}: {error}")
+
+
+def mahabucha_photo_delivery_followup():
+    _owner_photo_delivery_followup("mahabucha")
+
+
+def muteteam_ceremony_photo_delivery_followup():
+    _owner_photo_delivery_followup("muteteam_ceremony")
+
+
+def laos_photo_delivery_followup():
+    _owner_photo_delivery_followup("laos")
+
+
+def ratchaprasong_photo_delivery_followup():
+    _owner_photo_delivery_followup("ratchaprasong")
+
 # --- [PRINT] 12. PRINT-QUEUE DIGEST SCHEDULER (SG-B-2xx) ---
 # Replaces the old instant per-booking "notify-photo" push: each owner
 # gets one 16:00 report of every code still in waiting_print. During a
@@ -399,6 +561,10 @@ scheduler.add_job(func=mahabucha_daily_summary, trigger="cron", hour=21, minute=
 scheduler.add_job(func=muteteam_ceremony_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.add_job(func=laos_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.add_job(func=ratchaprasong_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
+scheduler.add_job(func=mahabucha_photo_delivery_followup, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
+scheduler.add_job(func=muteteam_ceremony_photo_delivery_followup, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
+scheduler.add_job(func=laos_photo_delivery_followup, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
+scheduler.add_job(func=ratchaprasong_photo_delivery_followup, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.add_job(func=muteteam_monthly_summary, trigger="cron", day="last", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
 scheduler.start()
 
