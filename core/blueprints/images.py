@@ -1,6 +1,4 @@
 """Supabase Storage image-library endpoints."""
-import threading
-
 from flask import Blueprint, request, jsonify
 from pydantic import ValidationError
 
@@ -41,8 +39,11 @@ def list_images_api():
 
 @images_bp.route('/api/reload', methods=['POST'])
 def reload_cache():
-    threading.Thread(target=update_file_list, daemon=True).start()
-    return jsonify({"message": "กำลัง reload cache..."}), 200
+    # Admin deletion waits for this response before reloading its list, so
+    # refresh synchronously to avoid briefly showing an already-deleted file.
+    with lock:
+        update_file_list()
+    return jsonify({"message": "reload cache สำเร็จ"}), 200
 
 
 @images_bp.route('/api/upload-image', methods=['POST'])
