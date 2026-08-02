@@ -1,17 +1,20 @@
 """
-Print-queue LINE notification message building (SG-B-202 original;
-SG-B-2xx replaced the instant per-booking push with a once-daily
-16:00 digest per owner -- app.py's *_print_queue_digest scheduler jobs
-query the day's new/queued bookings and call send_print_queue_digest
-once per owner with the whole list, instead of calling
-send_line_notification once per booking as it used to).
+Print-queue LINE notification message building. The 16:00 scheduler
+reports the codes still waiting to print at that moment, rather than
+the bookings that merely entered the queue earlier in the day.
 """
 from datetime import datetime, timezone, timedelta
+from collections import defaultdict
 
 from core.clients.line_client import send_line_notification
 from core.owners import OWNERS
 
 MONTHS_TH = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
+
+
+def format_thai_date(value):
+    """Renders every LINE notification date in one Thai short-date form."""
+    return f"{value.day} {MONTHS_TH[value.month]} {value.year + 543}"
 
 
 def booking_display_name(person1_name=None, person2_name=None, customer_name=None):
@@ -23,40 +26,49 @@ def booking_display_name(person1_name=None, person2_name=None, customer_name=Non
     return person1_name or customer_name or 'ไม่ระบุชื่อ'
 
 
-def _build_print_queue_digest_message(owner, items):
-    """items: list of {booking_code, display_name, tray_count}, already
-    filtered to "created today or moved to waiting_print today" for
-    this owner by the caller."""
+def _build_print_queue_digest_message(owner, items, ceremony_names=None):
+    """items: current list of bookings in ``waiting_print`` for owner."""
     now_th = datetime.now(timezone(timedelta(hours=7)))
-    date_str = f"{now_th.day} {MONTHS_TH[now_th.month]} {now_th.year + 543}"
+    date_str = format_thai_date(now_th)
 
     known = OWNERS.get(owner)
     page_name = known.display_name if known else owner
-    include_tray_count = not known or known.style != "mahabucha"
-
+    ceremony_label = " / ".join(ceremony_names or []) or "ไม่ระบุงานพิธี"
     lines = [
-        "🔔 [สรุปคิวปริ้นประจำวัน]",
+        "🖨️ [แจ้งเตือนคิวค้างปริ้น]",
         f"เพจ: {page_name}",
+        f"งานพิธี: {ceremony_label}",
         f"วันที่: {date_str}",
-        f"จำนวนรายการวันนี้: {len(items)} รายการ",
-        "",
     ]
-    for i, item in enumerate(items, start=1):
-        line = f"{i}. {item['booking_code']} - {item['display_name']}"
-        if include_tray_count:
-            line += f" ({item['tray_count']} องค์เทพ)"
-        lines.append(line)
+
+    if not items:
+        lines.extend([
+            "สถานะ: ไม่มีรายการค้างปริ้น",
+            "ตรวจสอบแล้ว ไม่มีรายการที่ต้องปริ้นในขณะนี้",
+        ])
+        return "\n".join(lines)
+
+    lines.extend([
+        "สถานะ: มีรายการค้างปริ้น",
+    ])
+    count_by_price = defaultdict(int)
+    for item in items:
+        count_by_price[item.get("total_price")] += 1
+    for price, count in sorted(count_by_price.items(), key=lambda entry: (entry[0] is None, entry[0] or 0)):
+        price_label = "ไม่ระบุราคา" if price is None else f"฿{float(price):,.0f}"
+        lines.append(f"- ราคา {price_label}: {count} รายการ")
 
     return "\n".join(lines)
 
 
-def send_print_queue_digest(owner, items):
-    """Sends one combined "print queue" LINE message summarizing every
-    booking in `items` for this owner today. No-op (returns (True,
-    None) without sending) when `items` is empty -- callers should
-    generally skip the call in that case too, but this guards
-    defensively against an accidental empty-list send."""
-    if not items:
+def send_print_queue_digest(owner, items, *, ceremony_names=None, send_empty=False):
+    """Sends the current print backlog for an owner.
+
+    Empty queues normally stay quiet; the scheduler uses ``send_empty``
+    during an active ceremony so the LINE group receives an explicit
+    confirmation that there are no codes left to print.
+    """
+    if not items and not send_empty:
         return True, None
-    text = _build_print_queue_digest_message(owner, items)
+    text = _build_print_queue_digest_message(owner, items, ceremony_names)
     return send_line_notification(owner, text)

@@ -42,10 +42,11 @@ app.register_blueprint(images_bp)
 # --- [NOTIFY] 11. LINE NOTIFICATIONS (moved to core/blueprints/notifications.py, SG-B-104) ---
 # send_line_notification is still used by the scheduler functions below
 # (mahabucha_daily_summary, muteteam_ceremony_daily_summary,
-# muteteam_monthly_summary); booking_display_name/send_print_queue_digest
-# back the once-daily print-queue digest jobs (SG-B-2xx).
+# muteteam_monthly_summary); send_print_queue_digest backs the daily
+# current print-backlog jobs.
 from core.clients.line_client import send_line_notification
-from core.services.notification_service import booking_display_name, send_print_queue_digest
+from core.services.notification_service import format_thai_date, send_print_queue_digest
+from core.owners import OWNERS
 from core.blueprints.notifications import notifications_bp
 app.register_blueprint(notifications_bp)
 
@@ -56,13 +57,10 @@ app.register_blueprint(system_bp)
 update_file_list()
 
 # --- [PRINT] 12. PRINT-QUEUE DIGEST SCHEDULER (SG-B-2xx) ---
-# Replaces the old instant per-booking "notify-photo" push: instead of
-# one LINE message per booking the moment it's created or moved to
-# "waiting_print", each owner gets ONE combined message per day at
-# 16:00 listing everything that qualified that day. Parameterized the
-# same way as _owner_daily_summary below -- one shared body, one thin
-# wrapper per owner -- rather than duplicating the ~60-line query 5
-# times.
+# Replaces the old instant per-booking "notify-photo" push: each owner
+# gets one 16:00 report of every code still in waiting_print. During a
+# ceremony, an empty report is sent as an explicit "no pending print"
+# confirmation. Parameterized for all five owners.
 def _owner_print_queue_digest(owner):
     try:
         if not SUPABASE_URL or not SUPABASE_KEY:
@@ -92,14 +90,8 @@ def _owner_print_queue_digest(owner):
             print(f"[TIMER] [DIGEST] Print-queue digest for {owner} is disabled.")
             return
 
-        # 2. Fetch every booking for this owner and keep the ones
-        # created today or moved to "waiting_print" today. There's no
-        # `updated_at` column on `bookings` -- activity_logs (a JSON
-        # array of {action, by, timestamp}) is the only record of when
-        # a status change happened, so it's inspected directly rather
-        # than filtered via a query param (same style already used by
-        # _owner_daily_summary below, which filters created_at in
-        # Python after fetching).
+        # 2. Fetch the current backlog. The LINE template groups it by the
+        # price selected by customers rather than exposing individual codes.
         tz = timezone(timedelta(hours=7))
         today = datetime.now(tz).date()
 
@@ -108,54 +100,50 @@ def _owner_print_queue_digest(owner):
             url_bookings, headers=headers,
             params={
                 "owner": f"eq.{owner}",
-                "select": "booking_code,customer_name,person1_name,person2_name,tray_count,tray_items,created_at,activity_logs",
+                "status": "eq.waiting_print",
+                "select": "gallery_id,total_price",
             },
             timeout=15,
         )
         if res_bookings.status_code != 200:
             return
 
-        items = []
-        for b in res_bookings.json():
-            created_at_str = b.get("created_at")
-            created_today = False
-            if created_at_str:
-                created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00")).astimezone(tz)
-                created_today = created_at.date() == today
+        bookings = res_bookings.json()
+        items = [{"total_price": b.get("total_price")} for b in bookings]
 
-            queued_today = False
-            for log in (b.get("activity_logs") or []):
-                if log.get("action") != "waiting_print":
-                    continue
-                ts = log.get("timestamp")
-                if not ts:
-                    continue
-                try:
-                    log_dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(tz)
-                except ValueError:
-                    continue
-                if log_dt.date() == today:
-                    queued_today = True
-                    break
+        # Gallery captions provide the ceremony context in the LINE template.
+        # The same query determines whether an empty confirmation is useful:
+        # a ceremony whose date has not passed is considered in progress by
+        # the scheduler, matching the daily-summary workflow.
+        res_galleries = requests.get(
+            f"{rest_base}/galleries", headers=headers,
+            params={"owner": f"eq.{owner}", "select": "id,caption,event_date"},
+            timeout=10,
+        )
+        galleries = res_galleries.json() if res_galleries.status_code == 200 else []
+        gallery_by_id = {gallery.get("id"): gallery for gallery in galleries}
+        active_galleries = [
+            gallery for gallery in galleries
+            if gallery.get("event_date") and gallery["event_date"] >= today.isoformat()
+        ]
+        ceremony_names = list(dict.fromkeys(
+            gallery_by_id.get(booking.get("gallery_id"), {}).get("caption")
+            for booking in bookings
+            if gallery_by_id.get(booking.get("gallery_id"), {}).get("caption")
+        ))
+        if not ceremony_names:
+            ceremony_names = list(dict.fromkeys(
+                gallery.get("caption") for gallery in active_galleries if gallery.get("caption")
+            ))
 
-            if not (created_today or queued_today):
-                continue
-
-            items.append({
-                "booking_code": b.get("booking_code"),
-                "display_name": booking_display_name(
-                    person1_name=b.get("person1_name"),
-                    person2_name=b.get("person2_name"),
-                    customer_name=b.get("customer_name"),
-                ),
-                "tray_count": len(b.get("tray_items") or []) or b.get("tray_count") or 0,
-            })
-
-        if not items:
-            print(f"[TIMER] [DIGEST] No new/queued bookings today for {owner}.")
+        send_empty = not items and bool(active_galleries)
+        if not items and not send_empty:
+            print(f"[TIMER] [DIGEST] No print backlog or active ceremony for {owner}.")
             return
 
-        success, err = send_print_queue_digest(owner, items)
+        success, err = send_print_queue_digest(
+            owner, items, ceremony_names=ceremony_names, send_empty=send_empty,
+        )
         if success:
             print(f"✅ [DIGEST] Sent print-queue digest for {owner} ({len(items)} รายการ)")
         else:
@@ -272,10 +260,11 @@ def _owner_daily_summary(owner, setting_id, default_caption):
             # Format message
             caption = ev.get("caption", default_caption)
 
+            page_name = OWNERS.get(owner).display_name if owner in OWNERS else owner
             if is_final:
-                msg = f"🔔 สรุปผลปิดยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+                msg = f"🔔 สรุปผลปิดยอดงานพิธี {caption}\nเพจ: {page_name}\nวันที่: {format_thai_date(today)}\n\n"
             else:
-                msg = f"🔔 สรุปยอดงานพิธี {caption}\n[DATE] ประจำวันที่ {today.strftime('%d/%m/%Y')}\n\n"
+                msg = f"🔔 สรุปยอดงานพิธี {caption}\nเพจ: {page_name}\nวันที่: {format_thai_date(today)}\n\n"
 
             msg += "[ 📈 ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
             today_total = 0
@@ -374,7 +363,7 @@ def muteteam_monthly_summary():
         month_name = months_th[now.month]
         year_th = now.year + 543
 
-        msg = f"🔔 สรุปยอดฝากถวายประจำเดือน {month_name} {year_th}\nเพจ: มูเตทีม\n\n"
+        msg = f"🔔 สรุปยอดฝากถวายประจำเดือน {month_name} {year_th}\nเพจ: มูเตทีม\nวันที่: {format_thai_date(now)}\n\n"
         
         msg += "[ 📈 ยอดจองใหม่ในเดือนนี้ ]\n"
         month_total = 0

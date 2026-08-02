@@ -6,8 +6,13 @@ in app.py's *_print_queue_digest jobs; these exercise message
 composition and the send wrapper directly.
 """
 from unittest import mock
+from datetime import date
 
 import core.services.notification_service as service
+
+
+def test_format_thai_date_uses_the_consistent_short_thai_format():
+    assert service.format_thai_date(date(2026, 8, 2)) == "2 ส.ค. 2569"
 
 
 def test_booking_display_name_uses_both_names_when_both_present():
@@ -22,7 +27,7 @@ def test_booking_display_name_uses_unspecified_label_when_no_names_at_all():
     assert service.booking_display_name() == "ไม่ระบุชื่อ"
 
 
-def test_send_print_queue_digest_is_a_noop_for_empty_items():
+def test_send_print_queue_digest_is_a_noop_for_empty_items_outside_an_active_ceremony():
     with mock.patch.object(service, "send_line_notification") as mock_send:
         success, err = service.send_print_queue_digest("muteteam", [])
     assert success is True
@@ -30,38 +35,49 @@ def test_send_print_queue_digest_is_a_noop_for_empty_items():
     mock_send.assert_not_called()
 
 
-def test_send_print_queue_digest_includes_tray_count_for_muteteam_only():
-    items = [{"booking_code": "150AA010001", "display_name": "สมชาย", "tray_count": 3}]
-
-    with mock.patch.object(service, "send_line_notification", return_value=(True, None)) as mock_send:
-        service.send_print_queue_digest("muteteam", items)
-    assert "3 องค์เทพ" in mock_send.call_args.args[1]
-
-    with mock.patch.object(service, "send_line_notification", return_value=(True, None)) as mock_send:
-        service.send_print_queue_digest("mahabucha", items)
-    assert "องค์เทพ" not in mock_send.call_args.args[1]
-
-
-def test_send_print_queue_digest_lists_every_item_and_uses_page_display_name():
+def test_send_print_queue_digest_groups_pending_work_by_selected_price():
     items = [
-        {"booking_code": "150AA010001", "display_name": "สมชาย", "tray_count": 1},
-        {"booking_code": "150AA010002", "display_name": "สมหญิง", "tray_count": 1},
+        {"total_price": 269},
+        {"total_price": 269},
+        {"total_price": 999},
     ]
+
+    with mock.patch.object(service, "send_line_notification", return_value=(True, None)) as mock_send:
+        service.send_print_queue_digest("muteteam", items, ceremony_names=["งานทดสอบ"])
+    text = mock_send.call_args.args[1]
+    assert "งานพิธี: งานทดสอบ" in text
+    assert "สถานะ: มีรายการค้างปริ้น" in text
+    assert "ราคา ฿269: 2 รายการ" in text
+    assert "ราคา ฿999: 1 รายการ" in text
+    assert "150AA010001" not in text
+    assert "รหัสที่ต้องปริ้น:" not in text
+
+
+def test_send_print_queue_digest_uses_page_display_name():
+    items = [{"total_price": 269}]
 
     with mock.patch.object(service, "send_line_notification", return_value=(True, None)) as mock_send:
         service.send_print_queue_digest("laos", items)
 
     text = mock_send.call_args.args[1]
     assert "เพจ: สยามคเณศ (ลาว)" in text
-    assert "150AA010001" in text
-    assert "150AA010002" in text
-    assert "จำนวนรายการวันนี้: 2 รายการ" in text
+    assert "ราคา ฿269: 1 รายการ" in text
+    assert "สถานะ: มีรายการค้างปริ้น" in text
+
+
+def test_send_print_queue_digest_can_confirm_an_empty_queue_during_a_ceremony():
+    with mock.patch.object(service, "send_line_notification", return_value=(True, None)) as mock_send:
+        service.send_print_queue_digest("mahabucha", [], ceremony_names=["งานมหาบูชา"], send_empty=True)
+
+    text = mock_send.call_args.args[1]
+    assert "งานพิธี: งานมหาบูชา" in text
+    assert "สถานะ: ไม่มีรายการค้างปริ้น" in text
 
 
 def test_send_print_queue_digest_returns_send_line_notification_result():
     with mock.patch.object(service, "send_line_notification", return_value=(False, "some error")):
         success, err = service.send_print_queue_digest(
-            "muteteam", [{"booking_code": "150AA010001", "display_name": "สมชาย", "tray_count": 1}]
+            "muteteam", [{"total_price": 269}]
         )
     assert success is False
     assert err == "some error"
