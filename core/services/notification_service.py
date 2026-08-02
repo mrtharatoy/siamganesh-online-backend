@@ -56,7 +56,9 @@ def _build_print_queue_digest_message(owner, items, ceremony_names=None):
         count_by_price[item.get("total_price")] += 1
     for price, count in sorted(count_by_price.items(), key=lambda entry: (entry[0] is None, entry[0] or 0)):
         price_label = "ไม่ระบุราคา" if price is None else f"฿{float(price):,.0f}"
-        lines.append(f"- ราคา {price_label}: {count} รายการ")
+        # "ใบ" matches the unit an operator must physically print, and
+        # keeps the digest useful even when several bookings share a price.
+        lines.append(f"- ราคา {price_label} จำนวน {count} ใบ")
 
     return "\n".join(lines)
 

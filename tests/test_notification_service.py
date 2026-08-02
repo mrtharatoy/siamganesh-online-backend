@@ -47,8 +47,8 @@ def test_send_print_queue_digest_groups_pending_work_by_selected_price():
     text = mock_send.call_args.args[1]
     assert "งานพิธี: งานทดสอบ" in text
     assert "สถานะ: มีรายการค้างปริ้น" in text
-    assert "ราคา ฿269: 2 รายการ" in text
-    assert "ราคา ฿999: 1 รายการ" in text
+    assert "ราคา ฿269 จำนวน 2 ใบ" in text
+    assert "ราคา ฿999 จำนวน 1 ใบ" in text
     assert "150AA010001" not in text
     assert "รหัสที่ต้องปริ้น:" not in text
 
@@ -61,7 +61,7 @@ def test_send_print_queue_digest_uses_page_display_name():
 
     text = mock_send.call_args.args[1]
     assert "เพจ: สยามคเณศ (ลาว)" in text
-    assert "ราคา ฿269: 1 รายการ" in text
+    assert "ราคา ฿269 จำนวน 1 ใบ" in text
     assert "สถานะ: มีรายการค้างปริ้น" in text
 
 
