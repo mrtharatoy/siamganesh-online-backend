@@ -52,12 +52,10 @@ siamganesh-online-backend/
 │   └── schemas.py       # Pydantic request-validation schemas ต่อ endpoint
 ├── requirements.txt    # รายการ dependencies ที่จำเป็นสำหรับรันระบบ
 ├── README.md           # เอกสารแนะนำโปรเจกต์และการใช้งาน
-└── images/             # โฟลเดอร์เก็บภาพถาดถวายและผลลัพธ์พิธีกรรม (Sync ไปยัง GitHub — เฉพาะ owner ที่ใช้ GitHub storage)
-    ├── mahabucha/      # ภาพถาดถวายของเพจมหาบูชา (จัดเก็บในชื่อ deity_code.jpg)
-    └── muteteam/       # ภาพถาดถวายของเพจมูเตทีม (จัดเก็บในชื่อ booking_code_index.webp)
+└── images/             # โฟลเดอร์ marker (.keep) เดิมเท่านั้น — รูปทั้งหมดอยู่ใน Supabase Storage
 ```
 
-> เพจ **สยามคเณศ (ลาว)** และ **สยามคเณศ (ราชประสงค์)** ใช้ Supabase Storage แทน GitHub สำหรับเก็บภาพ (เหมือนมหาบูชา) จึงไม่มีโฟลเดอร์ของตัวเองใน `images/`
+> รูปภาพทุกเพจอยู่ใน Supabase Storage ที่ `portfolio/image-library/<owner>/`; GitHub ใช้เก็บ source code เท่านั้น
 
 ---
 
@@ -67,13 +65,14 @@ siamganesh-online-backend/
 
 | ชื่อตัวแปร | คำอธิบายเพิ่มเติม | ตัวอย่างค่า |
 |:---|:---|:---|
-| `GITHUB_TOKEN` | GitHub Personal Access Token (แนะนำแบบ Fine-grained หรือ Classic ที่มีสิทธิ์อ่าน/เขียน content) | `ghp_abcdef...` |
 | `SUPABASE_URL` | URL ของโครงการ Supabase ของคุณ | `https://xxxx.supabase.co` |
-| `SUPABASE_KEY` | Supabase API Key (แนะนำ Service Role Key ในกรณีที่ไม่อยู่ภายใต้ RLS หรือ Anon Key) | `eyJhbGciOi...` |
+| `SUPABASE_KEY` | Supabase Service Role Key สำหรับจัดการ Supabase Storage | `eyJhbGciOi...` |
 | `LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA` | LINE Channel Access Token — ใช้ร่วมกันทุกเพจ (มหาบูชา/มูเตทีม/มูเตทีม งานพิธี/ลาว/ราชประสงค์) ตั้งแต่รวม LINE OA เป็นช่องทางเดียว ข้อความแยกความแตกต่างด้วยชื่อเพจในเนื้อหาแทน | `Rws+...` |
 | `LINE_GROUP_ID_MAHABUCHA` | LINE Group ID ปลายทางแจ้งเตือน — ใช้กลุ่มเดียวกันทุกเพจเช่นกัน | `Cxxxxxxxxxxxx` |
 
 > 🌍 **การเพิ่มเพจ/แบรนด์ใหม่ (Adding a new owner)**: เพิ่ม entry ใหม่ใน `OWNERS` dict ของ `core/owners.py` เพียงจุดเดียว ไม่ต้องแก้ if/elif กระจายในหลายไฟล์ (LINE token/group ใช้ร่วมกันทุกเพจ)
+
+> `GITHUB_TOKEN` ไม่ได้ใช้โดย backend ที่รันจริงแล้ว มีเฉพาะ script ย้ายข้อมูลเก่าใน `scripts/migrate_github_image_library_to_supabase.py` ซึ่งไม่ถูกเรียกเมื่อรันแอป
 
 ---
 
@@ -114,7 +113,6 @@ pip install -r requirements.txt
 บนระบบปฏิบัติการ Mac / Linux คุณสามารถ Export ตัวแปรได้ดังนี้:
 
 ```bash
-export GITHUB_TOKEN="your_github_token"
 export SUPABASE_URL="your_supabase_url"
 export SUPABASE_KEY="your_supabase_key"
 ```
