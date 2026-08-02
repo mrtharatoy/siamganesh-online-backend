@@ -71,3 +71,13 @@ def update_file_list():
 def get_image_url(owner, filename):
     path = quote(f"{_folder(owner)}/{filename}")
     return f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/public/{BUCKET}/{path}"
+
+
+def remove_cached_file(owner, filename):
+    """Remove one library entry immediately after a successful/idempotent delete.
+
+    Storage listing refreshes run in the background, so relying only on the
+    refresh could briefly return a just-deleted filename to the admin UI.
+    """
+    key = filename.rsplit(".", 1)[0].strip().lower()
+    CACHED_FILES.get(owner, {}).pop(key, None)

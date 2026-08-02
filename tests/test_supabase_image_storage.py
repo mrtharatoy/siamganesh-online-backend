@@ -48,6 +48,18 @@ def test_delete_library_image_uses_supabase_storage():
     assert "/storage/v1/object/portfolio/image-library/mahabucha/A.webp" in delete.call_args.args[0]
 
 
+def test_delete_missing_library_image_clears_stale_cache_entry():
+    response = mock.Mock(status_code=404, text='{"code":"NoSuchKey"}')
+    cache.CACHED_FILES["mahabucha"] = {"missing": "missing.webp"}
+    with mock.patch.object(upload, "SUPABASE_URL", "https://project.supabase.co"), \
+         mock.patch.object(upload, "SUPABASE_KEY", "service-key"), \
+         mock.patch("requests.delete", return_value=response), \
+         mock.patch.object(upload.threading, "Thread"):
+        result = upload.delete_image_file("mahabucha", "missing.webp")
+    assert result["success"] is True
+    assert "missing" not in cache.CACHED_FILES["mahabucha"]
+
+
 def test_system_status_reports_only_supabase_storage():
     app = type("App", (), {"server_start_time": datetime.now()})()
     with mock.patch("core.services.system_status_service.check_database_health", return_value={"status": "ok", "latency_ms": 1, "total_bookings": 2}), \

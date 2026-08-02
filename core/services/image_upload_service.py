@@ -7,7 +7,7 @@ from urllib.parse import quote
 import requests
 
 from config import SUPABASE_URL, SUPABASE_KEY
-from core.services.image_cache_service import BUCKET, LIBRARY_PREFIX, update_file_list
+from core.services.image_cache_service import BUCKET, LIBRARY_PREFIX, remove_cached_file, update_file_list
 
 
 def _headers(extra=None):
@@ -55,9 +55,14 @@ def delete_image_file(owner, filename):
             f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/{BUCKET}/{quote(_path(owner, filename))}",
             headers=_headers(), timeout=20,
         )
-        if response.status_code in (200, 204):
+        # Deletion is intentionally idempotent. A stale cache entry can
+        # outlive an object removed elsewhere; it must disappear from the
+        # admin list rather than producing a misleading “0 images deleted”.
+        if response.status_code in (200, 204, 404):
+            remove_cached_file(owner, filename)
             threading.Thread(target=update_file_list, daemon=True).start()
-            return {"success": True, "message": "ลบไฟล์ออกจากคลังรูปภาพสำเร็จ"}
+            message = "ลบไฟล์ออกจากคลังรูปภาพสำเร็จ" if response.status_code != 404 else "ไฟล์ไม่มีอยู่ในคลังแล้ว จึงนำออกจากรายการ"
+            return {"success": True, "message": message}
         return {"success": False, "message": f"ลบไฟล์ไม่สำเร็จ: {response.text}"}
     except Exception as exc:
         return {"success": False, "message": f"ลบไฟล์ไม่สำเร็จ: {exc}"}
