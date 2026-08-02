@@ -13,7 +13,11 @@ from datetime import datetime
 import psutil
 
 from config import LINE_CHANNEL_ACCESS_TOKEN
-from core.repositories.system_status_repository import check_database_health, get_supabase_storage_stats
+from core.repositories.system_status_repository import (
+    check_database_health,
+    get_supabase_storage_stats,
+    get_supabase_usage_metrics,
+)
 
 
 def build_system_status(app):
@@ -31,6 +35,7 @@ def build_system_status(app):
 
     supabase_count, supabase_size = get_supabase_storage_stats("portfolio")
     supabase_size_mb = supabase_size / (1024 * 1024)
+    supabase_usage = get_supabase_usage_metrics()
 
     return {
         "server": {
@@ -55,5 +60,27 @@ def build_system_status(app):
                 "limit_mb": 1024
             }
         },
+        "supabase_usage": {
+            "available": supabase_usage["available"],
+            "database_size_mb": round(supabase_usage["database_size_bytes"] / (1024 * 1024), 2),
+            "database_limit_mb": 500,
+            "file_storage_mb": round(supabase_usage["file_storage_bytes"] / (1024 * 1024), 2),
+            "file_storage_limit_mb": 1024,
+            "file_storage_count": supabase_usage["file_storage_count"],
+            "monthly_active_users": supabase_usage["monthly_active_users"],
+            "monthly_active_users_limit": 50000,
+            "project_ref": _supabase_project_ref(),
+        },
         "apis": apis,
     }
+
+
+def _supabase_project_ref():
+    """Derive the safe-to-display Supabase project ref from its URL."""
+    from config import SUPABASE_URL
+
+    if not SUPABASE_URL:
+        return None
+    hostname = SUPABASE_URL.removeprefix("https://").removeprefix("http://").split("/", 1)[0]
+    suffix = ".supabase.co"
+    return hostname[:-len(suffix)] if hostname.endswith(suffix) else None

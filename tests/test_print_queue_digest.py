@@ -35,13 +35,14 @@ def _scheduled_date(offset=0):
 
 
 def test_digest_skipped_when_owner_explicitly_disabled(app_module, supabase_configured):
-    with mock.patch("requests.get", return_value=_settings_response({"mahabucha": False})) as mock_get, \
+    with mock.patch.object(app_module, "is_owner_enabled", return_value=False), \
+         mock.patch("requests.get") as mock_get, \
          mock.patch.object(app_module, "send_print_queue_digest") as mock_send:
         app_module._owner_print_queue_digest("mahabucha")
 
     mock_send.assert_not_called()
-    # Only the settings fetch happens -- bails out before querying bookings.
-    assert mock_get.call_count == 1
+    # Page availability is now the first guard: do not query any data.
+    mock_get.assert_not_called()
 
 
 def test_digest_sends_every_pending_price_to_the_template(app_module, supabase_configured):

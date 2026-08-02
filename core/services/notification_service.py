@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
 from core.clients.line_client import send_line_notification
-from core.owners import OWNERS
+from core.services.page_configuration_service import get_owner_display_name
 
 MONTHS_TH = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
 
@@ -31,8 +31,7 @@ def _build_print_queue_digest_message(owner, items, ceremony_names=None):
     now_th = datetime.now(timezone(timedelta(hours=7)))
     date_str = format_thai_date(now_th)
 
-    known = OWNERS.get(owner)
-    page_name = known.display_name if known else owner
+    page_name = get_owner_display_name(owner)
     ceremony_label = " / ".join(ceremony_names or []) or "ไม่ระบุงานพิธี"
     lines = [
         "🖨️ [แจ้งเตือนคิวค้างปริ้น]",

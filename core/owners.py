@@ -30,7 +30,7 @@ class Owner:
 
 OWNERS = {
     "mahabucha": Owner("mahabucha", "มหาบูชา", "mahabucha"),
-    "muteteam": Owner("muteteam", "มูเตทีม", "muteteam"),
+    "muteteam": Owner("muteteam", "มูเตทีม (รายวัน)", "muteteam"),
     "muteteam_ceremony": Owner("muteteam_ceremony", "มูเตทีม (งานพิธี)", "mahabucha"),
     "laos": Owner("laos", "สยามคเณศ (ลาว)", "mahabucha"),
     "ratchaprasong": Owner("ratchaprasong", "สยามคเณศ (ราชประสงค์)", "mahabucha"),

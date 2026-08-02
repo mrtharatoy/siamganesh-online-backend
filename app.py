@@ -46,7 +46,7 @@ app.register_blueprint(images_bp)
 # current print-backlog jobs.
 from core.clients.line_client import send_line_notification
 from core.services.notification_service import format_thai_date, send_print_queue_digest
-from core.owners import OWNERS
+from core.services.page_configuration_service import get_owner_display_name, is_owner_enabled
 from core.blueprints.notifications import notifications_bp
 app.register_blueprint(notifications_bp)
 
@@ -102,6 +102,9 @@ def _owner_photo_delivery_followup(owner):
     try:
         if not SUPABASE_URL or not SUPABASE_KEY:
             return
+        if not is_owner_enabled(owner):
+            print(f"[TIMER] [PHOTO-FOLLOWUP] Page {owner} is disabled.")
+            return
 
         base = SUPABASE_URL.rstrip("/")
         rest_base = base if base.endswith("/rest/v1") else f"{base}/rest/v1"
@@ -153,7 +156,7 @@ def _owner_photo_delivery_followup(owner):
             if gallery["id"] in tracked and not pending_by_gallery.get(gallery["id"], 0) and gallery["id"] not in completed
         ]
 
-        page_name = OWNERS.get(owner).display_name if owner in OWNERS else owner
+        page_name = get_owner_display_name(owner)
         date_text = format_thai_date(today)
         if pending_ceremonies:
             lines = [
@@ -226,6 +229,9 @@ def ratchaprasong_photo_delivery_followup():
 def _owner_print_queue_digest(owner):
     try:
         if not SUPABASE_URL or not SUPABASE_KEY:
+            return
+        if not is_owner_enabled(owner):
+            print(f"[TIMER] [DIGEST] Page {owner} is disabled.")
             return
 
         print(f"[TIMER] [DIGEST] Running print-queue digest check for {owner}...")
@@ -330,9 +336,12 @@ def ratchaprasong_print_queue_digest():
 # galleries/bookings query, without copy-pasting this ~90-line body
 # once per owner (previously duplicated verbatim for mahabucha and
 # muteteam_ceremony).
-def _owner_daily_summary(owner, setting_id, default_caption):
+def _owner_daily_summary(owner, setting_id):
     try:
         if not SUPABASE_URL or not SUPABASE_KEY:
+            return
+        if not is_owner_enabled(owner):
+            print(f"[TIMER] [SUMMARY] Page {owner} is disabled.")
             return
 
         print(f"[TIMER] [SUMMARY] Running daily event summary check for {owner}...")
@@ -408,10 +417,10 @@ def _owner_daily_summary(owner, setting_id, default_caption):
                     if b_created_at > yesterday_2100:
                         today_by_price[price] += count
 
-            # Format message
-            caption = ev.get("caption", default_caption)
-
-            page_name = OWNERS.get(owner).display_name if owner in OWNERS else owner
+            page_name = get_owner_display_name(owner)
+            # Format message.  Both the page label and the fallback ceremony name
+            # originate from the owner configuration, rather than a stale literal.
+            caption = ev.get("caption") or f"งานพิธี {page_name}"
             if is_final:
                 msg = f"🔔 สรุปผลปิดยอดงานพิธี {caption}\nเพจ: {page_name}\nวันที่: {format_thai_date(today)}\n\n"
             else:
@@ -445,24 +454,27 @@ def _owner_daily_summary(owner, setting_id, default_caption):
 
 
 def mahabucha_daily_summary():
-    _owner_daily_summary("mahabucha", "daily_summary_mahabucha", "งานพิธีมหาบูชา")
+    _owner_daily_summary("mahabucha", "daily_summary_mahabucha")
 
 
 def muteteam_ceremony_daily_summary():
-    _owner_daily_summary("muteteam_ceremony", "daily_summary_muteteam_ceremony", "มูเตทีม (งานพิธี)")
+    _owner_daily_summary("muteteam_ceremony", "daily_summary_muteteam_ceremony")
 
 
 def laos_daily_summary():
-    _owner_daily_summary("laos", "daily_summary_laos", "สยามคเณศ (ลาว)")
+    _owner_daily_summary("laos", "daily_summary_laos")
 
 
 def ratchaprasong_daily_summary():
-    _owner_daily_summary("ratchaprasong", "daily_summary_ratchaprasong", "สยามคเณศ (ราชประสงค์)")
+    _owner_daily_summary("ratchaprasong", "daily_summary_ratchaprasong")
 
 # --- [STATS] 14. MUTETEAM MONTHLY SUMMARY SCHEDULER ---
 def muteteam_monthly_summary():
     try:
         print("[TIMER] [SUMMARY] Running monthly summary check for muteteam...")
+        if not is_owner_enabled("muteteam"):
+            print("[TIMER] [SUMMARY] Page muteteam is disabled.")
+            return
         base = SUPABASE_URL.rstrip("/")
         rest_base = base if base.endswith("/rest/v1") else f"{base}/rest/v1"
         headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
@@ -514,7 +526,7 @@ def muteteam_monthly_summary():
         month_name = months_th[now.month]
         year_th = now.year + 543
 
-        msg = f"🔔 สรุปยอดฝากถวายประจำเดือน {month_name} {year_th}\nเพจ: มูเตทีม\nวันที่: {format_thai_date(now)}\n\n"
+        msg = f"🔔 สรุปยอดฝากถวายประจำเดือน {month_name} {year_th}\nเพจ: {get_owner_display_name('muteteam')}\nวันที่: {format_thai_date(now)}\n\n"
         
         msg += "[ 📈 ยอดจองใหม่ในเดือนนี้ ]\n"
         month_total = 0

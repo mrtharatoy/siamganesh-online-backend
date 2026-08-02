@@ -10,6 +10,55 @@ import requests
 from config import SUPABASE_URL, SUPABASE_KEY
 
 
+def get_supabase_usage_metrics():
+    """Read project-wide usage calculated inside Supabase.
+
+    The RPC is deliberately called with the service-role key from the backend
+    only.  It exposes aggregate numbers and never exposes auth users or
+    storage object metadata to the browser.
+    """
+    result = {
+        "available": False,
+        "database_size_bytes": 0,
+        "file_storage_bytes": 0,
+        "file_storage_count": 0,
+        "monthly_active_users": 0,
+    }
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return result
+
+    try:
+        response = requests.post(
+            f"{SUPABASE_URL.rstrip('/')}/rest/v1/rpc/get_system_usage_metrics",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={},
+            timeout=8,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        row = payload[0] if isinstance(payload, list) and payload else payload
+        if not isinstance(row, dict):
+            return result
+
+        for key in ("database_size_bytes", "file_storage_bytes", "file_storage_count", "monthly_active_users"):
+            value = row.get(key)
+            if isinstance(value, (int, float)):
+                result[key] = int(value)
+            elif isinstance(value, str) and value.isdigit():
+                result[key] = int(value)
+        result["available"] = True
+    except (requests.RequestException, ValueError, TypeError):
+        # The migration may not have been applied yet.  System health must
+        # remain available even while the optional usage metrics are absent.
+        pass
+
+    return result
+
+
 def check_database_health():
     """Returns {status, latency_ms, total_bookings}, matching the
     original inline try/except in system_status(): any failure leaves

@@ -56,11 +56,12 @@ def test_send_print_queue_digest_groups_pending_work_by_selected_price():
 def test_send_print_queue_digest_uses_page_display_name():
     items = [{"total_price": 269}]
 
-    with mock.patch.object(service, "send_line_notification", return_value=(True, None)) as mock_send:
+    with mock.patch.object(service, "get_owner_display_name", return_value="สยามคเณศ ลาวใหม่"), \
+         mock.patch.object(service, "send_line_notification", return_value=(True, None)) as mock_send:
         service.send_print_queue_digest("laos", items)
 
     text = mock_send.call_args.args[1]
-    assert "เพจ: สยามคเณศ (ลาว)" in text
+    assert "เพจ: สยามคเณศ ลาวใหม่" in text
     assert "ราคา ฿269 จำนวน 1 ใบ" in text
     assert "สถานะ: มีรายการค้างปริ้น" in text
 
