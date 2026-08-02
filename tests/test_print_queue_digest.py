@@ -1,9 +1,8 @@
 """
-Tests for app.py's _owner_print_queue_digest -- the once-daily 16:00
-current print-backlog report. Message composition itself is tested in
-tests/test_notification_service.py; these exercise the setting gate,
-the waiting_print query, and the empty-queue confirmation for active
-ceremonies.
+Tests for app.py's _owner_print_queue_digest -- the 16:00 report sent
+only on the day before and the day of a ceremony. Message composition
+itself is tested in tests/test_notification_service.py; these exercise
+the setting gate, ceremony-window filtering, and empty confirmation.
 
 SUPABASE_URL/SUPABASE_KEY are empty strings in the test env
 (conftest.py) so the function's `if not SUPABASE_URL or not
@@ -31,6 +30,10 @@ def _bookings_response(bookings):
     return mock.Mock(status_code=200, json=lambda: bookings)
 
 
+def _scheduled_date(offset=0):
+    return (datetime.now(timezone(timedelta(hours=7))).date() + timedelta(days=offset)).isoformat()
+
+
 def test_digest_skipped_when_owner_explicitly_disabled(app_module, supabase_configured):
     with mock.patch("requests.get", return_value=_settings_response({"mahabucha": False})) as mock_get, \
          mock.patch.object(app_module, "send_print_queue_digest") as mock_send:
@@ -49,7 +52,7 @@ def test_digest_sends_every_pending_price_to_the_template(app_module, supabase_c
 
     with mock.patch(
         "requests.get",
-        side_effect=[_settings_response({"mahabucha": True}), _bookings_response(bookings), _bookings_response([{"id": "event-1", "caption": "งานมหาบูชา", "event_date": "2999-01-01"}])],
+        side_effect=[_settings_response({"mahabucha": True}), _bookings_response([{"id": "event-1", "caption": "งานมหาบูชา", "event_date": _scheduled_date(1)}]), _bookings_response(bookings)],
     ), mock.patch.object(app_module, "send_print_queue_digest", return_value=(True, None)) as mock_send:
         app_module._owner_print_queue_digest("mahabucha")
 
@@ -57,24 +60,24 @@ def test_digest_sends_every_pending_price_to_the_template(app_module, supabase_c
     owner_arg, items_arg = mock_send.call_args.args
     assert owner_arg == "mahabucha"
     assert {item["total_price"] for item in items_arg} == {269, 999}
-    assert mock_send.call_args.kwargs == {"ceremony_names": ["งานมหาบูชา"], "send_empty": False}
+    assert mock_send.call_args.kwargs == {"ceremony_names": ["งานมหาบูชา"], "send_empty": True}
 
 
-def test_digest_sends_empty_confirmation_when_an_active_ceremony_has_no_backlog(app_module, supabase_configured):
+def test_digest_sends_empty_confirmation_when_ceremony_is_today_or_tomorrow(app_module, supabase_configured):
 
     with mock.patch(
         "requests.get",
-        side_effect=[_settings_response({"mahabucha": True}), _bookings_response([]), _bookings_response([{"id": "event-1", "caption": "งานมหาบูชา", "event_date": "2999-01-01"}])],
+        side_effect=[_settings_response({"mahabucha": True}), _bookings_response([{"id": "event-1", "caption": "งานมหาบูชา", "event_date": _scheduled_date()}]), _bookings_response([])],
     ), mock.patch.object(app_module, "send_print_queue_digest", return_value=(True, None)) as mock_send:
         app_module._owner_print_queue_digest("mahabucha")
 
     mock_send.assert_called_once_with("mahabucha", [], ceremony_names=["งานมหาบูชา"], send_empty=True)
 
 
-def test_digest_skips_empty_confirmation_when_no_ceremony_is_active(app_module, supabase_configured):
+def test_digest_skips_when_no_ceremony_is_today_or_tomorrow(app_module, supabase_configured):
     with mock.patch(
         "requests.get",
-        side_effect=[_settings_response({"mahabucha": True}), _bookings_response([]), _bookings_response([])],
+        side_effect=[_settings_response({"mahabucha": True}), _bookings_response([{"id": "event-1", "caption": "งานอนาคต", "event_date": "2999-01-01"}])],
     ), mock.patch.object(app_module, "send_print_queue_digest") as mock_send:
         app_module._owner_print_queue_digest("mahabucha")
 
@@ -90,7 +93,7 @@ def test_digest_falls_back_to_legacy_enabled_shape(app_module, supabase_configur
 
     with mock.patch(
         "requests.get",
-        side_effect=[_settings_response({"enabled": True}), _bookings_response(bookings), _bookings_response([{"id": "event-1", "caption": "งานลาว", "event_date": "2999-01-01"}])],
+        side_effect=[_settings_response({"enabled": True}), _bookings_response([{"id": "event-1", "caption": "งานลาว", "event_date": _scheduled_date()}]), _bookings_response(bookings)],
     ), mock.patch.object(app_module, "send_print_queue_digest", return_value=(True, None)) as mock_send:
         app_module._owner_print_queue_digest("laos")
 
@@ -104,3 +107,21 @@ def test_digest_legacy_enabled_false_disables_every_owner(app_module, supabase_c
 
     mock_send.assert_not_called()
     assert mock_get.call_count == 1
+
+
+def test_digest_ignores_waiting_print_from_a_different_ceremony(app_module, supabase_configured):
+    bookings = [
+        {"gallery_id": "scheduled", "total_price": 269},
+        {"gallery_id": "old-event", "total_price": 999},
+    ]
+    with mock.patch(
+        "requests.get",
+        side_effect=[
+            _settings_response({"mahabucha": True}),
+            _bookings_response([{"id": "scheduled", "caption": "งานพรุ่งนี้", "event_date": _scheduled_date(1)}]),
+            _bookings_response(bookings),
+        ],
+    ), mock.patch.object(app_module, "send_print_queue_digest", return_value=(True, None)) as mock_send:
+        app_module._owner_print_queue_digest("mahabucha")
+
+    assert mock_send.call_args.args[1] == [{"total_price": 269}]

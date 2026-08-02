@@ -219,10 +219,10 @@ def ratchaprasong_photo_delivery_followup():
     _owner_photo_delivery_followup("ratchaprasong")
 
 # --- [PRINT] 12. PRINT-QUEUE DIGEST SCHEDULER (SG-B-2xx) ---
-# Replaces the old instant per-booking "notify-photo" push: each owner
-# gets one 16:00 report of every code still in waiting_print. During a
-# ceremony, an empty report is sent as an explicit "no pending print"
-# confirmation. Parameterized for all five owners.
+# Replaces the old instant per-booking "notify-photo" push.  Each owner
+# gets a 16:00 report only twice per ceremony: the day before, and the
+# ceremony day.  Both reports explicitly confirm an empty queue, so the
+# operator does not need a daily stream of messages between ceremonies.
 def _owner_print_queue_digest(owner):
     try:
         if not SUPABASE_URL or not SUPABASE_KEY:
@@ -252,59 +252,48 @@ def _owner_print_queue_digest(owner):
             print(f"[TIMER] [DIGEST] Print-queue digest for {owner} is disabled.")
             return
 
-        # 2. Fetch the current backlog. The LINE template groups it by the
-        # price selected by customers rather than exposing individual codes.
+        # 2. Select ceremonies taking place tomorrow or today. The cron runs
+        # every day at 16:00, but there is no message at all when this owner
+        # has no ceremony in that two-day window.
         tz = timezone(timedelta(hours=7))
         today = datetime.now(tz).date()
-
-        url_bookings = f"{rest_base}/bookings"
-        res_bookings = requests.get(
-            url_bookings, headers=headers,
-            params={
-                "owner": f"eq.{owner}",
-                "status": "eq.waiting_print",
-                "select": "gallery_id,total_price",
-            },
-            timeout=15,
-        )
-        if res_bookings.status_code != 200:
-            return
-
-        bookings = res_bookings.json()
-        items = [{"total_price": b.get("total_price")} for b in bookings]
-
-        # Gallery captions provide the ceremony context in the LINE template.
-        # The same query determines whether an empty confirmation is useful:
-        # a ceremony whose date has not passed is considered in progress by
-        # the scheduler, matching the daily-summary workflow.
         res_galleries = requests.get(
             f"{rest_base}/galleries", headers=headers,
             params={"owner": f"eq.{owner}", "select": "id,caption,event_date"},
             timeout=10,
         )
         galleries = res_galleries.json() if res_galleries.status_code == 200 else []
-        gallery_by_id = {gallery.get("id"): gallery for gallery in galleries}
-        active_galleries = [
+        scheduled_dates = {today.isoformat(), (today + timedelta(days=1)).isoformat()}
+        scheduled_galleries = [
             gallery for gallery in galleries
-            if gallery.get("event_date") and gallery["event_date"] >= today.isoformat()
+            if gallery.get("id") and gallery.get("event_date") in scheduled_dates
         ]
-        ceremony_names = list(dict.fromkeys(
-            gallery_by_id.get(booking.get("gallery_id"), {}).get("caption")
-            for booking in bookings
-            if gallery_by_id.get(booking.get("gallery_id"), {}).get("caption")
-        ))
-        if not ceremony_names:
-            ceremony_names = list(dict.fromkeys(
-                gallery.get("caption") for gallery in active_galleries if gallery.get("caption")
-            ))
-
-        send_empty = not items and bool(active_galleries)
-        if not items and not send_empty:
-            print(f"[TIMER] [DIGEST] No print backlog or active ceremony for {owner}.")
+        if not scheduled_galleries:
+            print(f"[TIMER] [DIGEST] No ceremony tomorrow or today for {owner}.")
             return
 
+        # 3. Fetch the current backlog and retain only bookings belonging to
+        # the scheduled ceremony window. The LINE template groups by selected
+        # price rather than exposing booking codes.
+        scheduled_ids = {gallery["id"] for gallery in scheduled_galleries}
+        res_bookings = requests.get(
+            f"{rest_base}/bookings", headers=headers,
+            params={"owner": f"eq.{owner}", "status": "eq.waiting_print", "select": "gallery_id,total_price"},
+            timeout=15,
+        )
+        if res_bookings.status_code != 200:
+            return
+        items = [
+            {"total_price": booking.get("total_price")}
+            for booking in res_bookings.json()
+            if booking.get("gallery_id") in scheduled_ids
+        ]
+        ceremony_names = list(dict.fromkeys(
+            gallery.get("caption") for gallery in scheduled_galleries if gallery.get("caption")
+        ))
+
         success, err = send_print_queue_digest(
-            owner, items, ceremony_names=ceremony_names, send_empty=send_empty,
+            owner, items, ceremony_names=ceremony_names, send_empty=True,
         )
         if success:
             print(f"✅ [DIGEST] Sent print-queue digest for {owner} ({len(items)} รายการ)")

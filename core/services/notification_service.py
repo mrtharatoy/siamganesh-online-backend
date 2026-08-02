@@ -1,7 +1,7 @@
 """
 Print-queue LINE notification message building. The 16:00 scheduler
-reports the codes still waiting to print at that moment, rather than
-the bookings that merely entered the queue earlier in the day.
+runs only on the day before and the day of a ceremony, and reports the
+bookings still waiting to print for that ceremony at that moment.
 """
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
@@ -66,9 +66,9 @@ def _build_print_queue_digest_message(owner, items, ceremony_names=None):
 def send_print_queue_digest(owner, items, *, ceremony_names=None, send_empty=False):
     """Sends the current print backlog for an owner.
 
-    Empty queues normally stay quiet; the scheduler uses ``send_empty``
-    during an active ceremony so the LINE group receives an explicit
-    confirmation that there are no codes left to print.
+    Empty queues normally stay quiet; the ceremony scheduler passes
+    ``send_empty`` on both scheduled reporting days so the LINE group
+    receives an explicit confirmation that there is nothing left to print.
     """
     if not items and not send_empty:
         return True, None
