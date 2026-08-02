@@ -4,18 +4,12 @@ Environment variable loading for the Flask app.
 Extracted from app.py (SG-B-101) with zero behavior change: every
 constant name, default value, and the CORS ALLOWED_ORIGINS
 fallback/warning are exactly as they were before this file existed.
-app.py imports these names directly so existing test patches like
-`mock.patch.object(app_module, "GITHUB_TOKEN", ...)` keep working
-unchanged (Python binds a fresh name in app.py's namespace on
-`from config import GITHUB_TOKEN`, independent of this module).
+Image assets use Supabase Storage; GitHub configuration is intentionally
+absent so this service cannot accidentally use a source-code repository as
+file storage.
 """
 import os
 
-GITHUB_USERNAME = os.getenv("GITHUB_USERNAME", "mrtharatoy")
-REPO_NAME       = os.getenv("REPO_NAME", "siamganesh-online-backend")
-BRANCH          = os.getenv("BRANCH", "main")
-
-GITHUB_TOKEN      = os.environ.get('GITHUB_TOKEN')
 SUPABASE_URL      = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY      = os.environ.get('SUPABASE_KEY')
 

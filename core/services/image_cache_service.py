@@ -1,95 +1,73 @@
+"""Supabase Storage-backed index for the admin image library.
+
+Runtime image storage deliberately lives under
+``portfolio/image-library/<owner>/``.  GitHub is no longer queried or used
+as a CDN; the small in-memory index only avoids repeatedly listing Storage.
 """
-Shared GitHub-backed image cache, extracted from app.py (SG-B-103a,
-a prerequisite slice of SG-B-103/SG-B-200 pulled forward because the
-messenger/images/search route logic all read and refresh this same
-cache -- extracting any one of those blueprints first requires this
-module to exist without a circular import back to app.py).
-
-`is_loaded()` / `get_last_refresh()` / `touch_last_refresh()` are
-plain functions, not module-level bool/float names re-exported via
-`from ... import NAME`. That distinction matters: a bare
-`from core.services.image_cache_service import FILES_LOADED` in
-another module would copy the *value* at import time, and this
-module's own `_files_loaded = True` reassignment afterwards would
-never be visible through that other module's stale copy. Functions
-always look up the current value, so callers stay correct regardless
-of which module calls them from.
-
-`CACHED_FILES` / `TOTAL_IMAGES_SIZE` / `lock` remain plain module-level
-names that ARE safe to import directly elsewhere: update_file_list()
-mutates the two dicts in place (assigns into existing keys, never
-rebinds the name), and `lock` is a single `threading.Lock()` object
-whose identity -- not a copied value -- is what every caller needs to
-share.
-
-Every call site that used to do `LAST_CACHE_REFRESH = time.time()`
-itself, immediately after calling update_file_list() under the lock,
-must now call `touch_last_refresh()` at that exact same point instead
--- update_file_list() intentionally does NOT set this itself, exactly
-matching the original app.py control flow where the caller (not
-update_file_list) owned that timestamp.
-"""
-import threading
 import time
+import threading
+from urllib.parse import quote
 
 import requests
 
-from config import GITHUB_USERNAME, REPO_NAME, BRANCH, GITHUB_TOKEN
+from config import SUPABASE_URL, SUPABASE_KEY
 from core.owners import PAGE_OWNERS
 
+BUCKET = "portfolio"
+LIBRARY_PREFIX = "image-library"
 CACHED_FILES = {owner: {} for owner in PAGE_OWNERS}
 TOTAL_IMAGES_SIZE = {owner: 0 for owner in PAGE_OWNERS}
 lock = threading.Lock()
-
 _files_loaded = False
 _last_cache_refresh = 0
 
 
-def is_loaded():
-    return _files_loaded
-
-
-def get_last_refresh():
-    return _last_cache_refresh
-
-
+def is_loaded(): return _files_loaded
+def get_last_refresh(): return _last_cache_refresh
 def touch_last_refresh():
     global _last_cache_refresh
     _last_cache_refresh = time.time()
 
 
+def _headers():
+    return {"apikey": SUPABASE_KEY or "", "Authorization": f"Bearer {SUPABASE_KEY or ''}"}
+
+
+def _folder(owner): return f"{LIBRARY_PREFIX}/{owner}"
+
+
 def update_file_list():
     global _files_loaded
-    print("[SYNC] Updating image list from GitHub...")
-    headers = {
-        "User-Agent": "Siamganesh-Bot",
-        "Accept": "application/vnd.github.v3+json",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache"
-    }
-    if GITHUB_TOKEN:
-        headers["Authorization"] = f"token {GITHUB_TOKEN}"
-
-    for page in PAGE_OWNERS:
-        api_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{REPO_NAME}/contents/images/{page}?ref={BRANCH}&t={int(time.time())}"
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        print("❌ Supabase Storage is not configured")
+        return
+    print("[SYNC] Updating image list from Supabase Storage...")
+    base = SUPABASE_URL.rstrip("/")
+    for owner in PAGE_OWNERS:
         try:
-            r = requests.get(api_url, headers=headers, timeout=15)
-            if r.status_code == 200:
-                files = r.json()
-                temp_cache = {}
-                total_size = 0
-                for item in files:
-                    if item['type'] == 'file' and item['name'] != '.keep':
-                        name_no_ext = item['name'].rsplit('.', 1)[0].strip().lower()
-                        temp_cache[name_no_ext] = item['name']
-                        total_size += item.get('size', 0)
-                CACHED_FILES[page] = temp_cache
-                TOTAL_IMAGES_SIZE[page] = total_size
-                print(f"✅ {page.upper()} loaded: {len(temp_cache)} images, Size: {total_size} bytes.")
-        except Exception as e:
-            print(f"❌ Error {page}: {e}")
+            response = requests.post(
+                f"{base}/storage/v1/object/list/{BUCKET}", headers=_headers(),
+                json={"prefix": _folder(owner), "limit": 1000, "offset": 0}, timeout=15,
+            )
+            response.raise_for_status()
+            files = response.json()
+            cache, total_size = {}, 0
+            for item in files:
+                if item.get("id") is None:
+                    continue
+                filename = item.get("name", "")
+                if not filename:
+                    continue
+                cache[filename.rsplit(".", 1)[0].strip().lower()] = filename
+                total_size += item.get("metadata", {}).get("size", 0)
+            CACHED_FILES[owner] = cache
+            TOTAL_IMAGES_SIZE[owner] = total_size
+            print(f"✅ {owner.upper()} loaded: {len(cache)} images, Size: {total_size} bytes.")
+        except Exception as exc:
+            print(f"❌ Error {owner}: {exc}")
     _files_loaded = True
 
 
-def get_image_url(page, filename):
-    return f"https://raw.githubusercontent.com/{GITHUB_USERNAME}/{REPO_NAME}/{BRANCH}/images/{page}/{filename}"
+def get_image_url(owner, filename):
+    path = quote(f"{_folder(owner)}/{filename}")
+    return f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/public/{BUCKET}/{path}"

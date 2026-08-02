@@ -26,7 +26,7 @@ app.server_start_time = datetime.now()
 from core.errors import register_error_handlers
 register_error_handlers(app)
 
-# --- [FILE] 2. GITHUB FILES (moved to core/services/image_cache_service.py, SG-B-103a) ---
+# --- [FILE] 2. SUPABASE STORAGE IMAGE INDEX (core/services/image_cache_service.py) ---
 # CACHED_FILES/TOTAL_IMAGES_SIZE/lock/is_loaded/get_image_url have no
 # remaining direct callers in app.py now that the images (SG-B-103) and
 # system (SG-B-106) blueprints own every call site that needed them.

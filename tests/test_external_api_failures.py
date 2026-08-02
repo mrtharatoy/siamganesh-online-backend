@@ -30,9 +30,7 @@ from unittest import mock
 import pytest
 import requests
 
-import core.blueprints.images as images_blueprint
 import core.clients.line_client as line_client
-import core.services.image_upload_service as image_upload_service
 
 
 @pytest.fixture
@@ -45,38 +43,6 @@ def client(app_module):
     # route-level try/except of their own.
     app_module.app.testing = False
     return app_module.app.test_client()
-
-
-# --- GitHub timeout/connection failure (uncaught -> generic 500 JSON) ---
-
-
-def test_upload_image_500_json_when_github_put_times_out(client):
-    with mock.patch.object(image_upload_service, "GITHUB_TOKEN", "fake-token"), mock.patch(
-        "requests.get", return_value=mock.Mock(status_code=404)
-    ), mock.patch("requests.put", side_effect=requests.exceptions.Timeout("github timed out")):
-        resp = client.post(
-            "/api/upload-image",
-            json={
-                "booking_code": "150AA010001",
-                "owner": "muteteam",
-                "images": [{"index": 1, "ext": "webp", "data": "ZmFrZQ=="}],
-            },
-        )
-
-    assert resp.status_code == 500
-    assert resp.content_type == "application/json"
-    assert resp.get_json() == {"error": "internal server error"}
-
-
-def test_delete_image_500_json_when_github_get_connection_fails(client):
-    with mock.patch.object(images_blueprint, "GITHUB_TOKEN", "fake-token"), mock.patch(
-        "requests.get", side_effect=requests.exceptions.ConnectionError("no route to github")
-    ):
-        resp = client.post("/api/delete-image", json={"page": "muteteam", "filename": "a.jpg"})
-
-    assert resp.status_code == 500
-    assert resp.content_type == "application/json"
-    assert resp.get_json() == {"error": "internal server error"}
 
 
 # --- LINE timeout (caught internally -> graceful degradation, not a 500) ---

@@ -90,11 +90,14 @@ class UploadImageBody(BaseModel):
     @field_validator("owner")
     @classmethod
     def _owner_strip(cls, v):
-        return (v or "muteteam").strip()
+        v = (v or "muteteam").strip().lower()
+        if v not in PAGE_OWNERS:
+            raise ValueError("invalid owner")
+        return v
 
 
 class UploadGithubRawBody(BaseModel):
-    """POST /api/upload-github-raw -- mirrors: owner and images
+    """POST /api/upload-storage-raw -- owner and images
     (non-empty list) required."""
 
     owner: str
@@ -103,8 +106,8 @@ class UploadGithubRawBody(BaseModel):
     @field_validator("owner")
     @classmethod
     def _owner_must_be_present(cls, v):
-        v = (v or "").strip()
-        if not v:
+        v = (v or "").strip().lower()
+        if v not in PAGE_OWNERS:
             raise ValueError("owner is required")
         return v
 
@@ -117,7 +120,7 @@ class UploadGithubRawBody(BaseModel):
 
 
 class DeleteImageBody(BaseModel):
-    """POST /api/delete-image -- mirrors: page must be one of
+    """POST /api/delete-storage-image -- page must be one of
     PAGE_OWNERS, filename must be non-empty."""
 
     page: str

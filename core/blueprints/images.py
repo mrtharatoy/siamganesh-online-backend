@@ -1,19 +1,10 @@
-"""
-Images blueprint (SG-B-103), extracted from app.py: `/api/images`,
-`/api/reload`, `/api/upload-image`, `/api/upload-github-raw`,
-`/api/delete-image`. Route logic is unchanged from the original
-app.py handlers of the same name.
-
-Upload/delete orchestration now lives in
-core/services/image_upload_service.py (SG-B-202) so these routes are
-just parse-request/call-service/map-response.
-"""
+"""Supabase Storage image-library endpoints."""
 import threading
 
 from flask import Blueprint, request, jsonify
 from pydantic import ValidationError
 
-from config import GITHUB_TOKEN
+from config import SUPABASE_URL, SUPABASE_KEY
 from core.schemas import DeleteImageBody, ListImagesQuery, UploadGithubRawBody, UploadImageBody
 from core.services.image_cache_service import CACHED_FILES, lock, is_loaded, update_file_list, get_image_url
 from core.services.image_upload_service import upload_images_for_booking, upload_raw_images, delete_image_file
@@ -70,8 +61,8 @@ def upload_image():
     return jsonify(result), 200 if result["success"] else 500
 
 
-@images_bp.route('/api/upload-github-raw', methods=['POST'])
-def upload_github_raw():
+@images_bp.route('/api/upload-storage-raw', methods=['POST'])
+def upload_storage_raw():
     body = request.get_json(silent=True)
     if not body:
         return jsonify({"success": False, "message": "ไม่มีข้อมูล"}), 400
@@ -82,17 +73,17 @@ def upload_github_raw():
         return jsonify({"success": False, "message": "ข้อมูลไม่ครบ"}), 400
     owner, images = validated.owner, validated.images
 
-    if not GITHUB_TOKEN:
-        return jsonify({"success": False, "message": "ไม่มี GITHUB_TOKEN"}), 500
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return jsonify({"success": False, "message": "ยังไม่ได้ตั้งค่า Supabase Storage"}), 500
 
     result = upload_raw_images(owner, images)
     return jsonify(result), 200 if result["success"] else 500
 
 
-@images_bp.route('/api/delete-image', methods=['POST'])
-def delete_image():
-    if not GITHUB_TOKEN:
-        return jsonify({"success": False, "message": "ไม่มี GITHUB_TOKEN"}), 500
+@images_bp.route('/api/delete-storage-image', methods=['POST'])
+def delete_storage_image():
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return jsonify({"success": False, "message": "ยังไม่ได้ตั้งค่า Supabase Storage"}), 500
 
     body = request.get_json(silent=True)
     if not body:

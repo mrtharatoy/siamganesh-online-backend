@@ -14,7 +14,6 @@ import psutil
 
 from config import LINE_CHANNEL_ACCESS_TOKEN
 from core.repositories.system_status_repository import check_database_health, get_supabase_storage_stats
-from core.services.image_cache_service import CACHED_FILES, TOTAL_IMAGES_SIZE
 
 
 def build_system_status(app):
@@ -30,14 +29,8 @@ def build_system_status(app):
         "timezone": "Asia/Bangkok",
     }
 
-    total_images_github = len(CACHED_FILES.get("mahabucha", {})) + len(CACHED_FILES.get("muteteam", {}))
-    total_images_size_github_mb = (TOTAL_IMAGES_SIZE.get("mahabucha", 0) + TOTAL_IMAGES_SIZE.get("muteteam", 0)) / (1024 * 1024)
-
     supabase_count, supabase_size = get_supabase_storage_stats("portfolio")
     supabase_size_mb = supabase_size / (1024 * 1024)
-
-    total_images = total_images_github + supabase_count
-    total_images_size_mb = total_images_size_github_mb + supabase_size_mb
 
     return {
         "server": {
@@ -52,15 +45,10 @@ def build_system_status(app):
             "status": db_health["status"],
             "latency_ms": db_health["latency_ms"],
             "total_bookings": db_health["total_bookings"],
-            "total_images": total_images,
-            "total_images_size_mb": round(total_images_size_mb, 2)
+            "total_images": supabase_count,
+            "total_images_size_mb": round(supabase_size_mb, 2)
         },
         "storage": {
-            "github": {
-                "count": total_images_github,
-                "size_mb": round(total_images_size_github_mb, 2),
-                "limit_mb": 1024
-            },
             "supabase": {
                 "count": supabase_count,
                 "size_mb": round(supabase_size_mb, 2),
