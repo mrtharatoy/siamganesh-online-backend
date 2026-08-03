@@ -1,0 +1,55 @@
+name: Scheduled LINE jobs
+
+# Runs the same job groups that used to run on Render Cron Jobs (SG-B-3xx),
+# now on GitHub Actions' free runners so they don't depend on Render's web
+# service being on a paid plan or even being awake. Each schedule maps to
+# one cron_jobs.py group via `github.event.schedule` below.
+on:
+  schedule:
+    - cron: '0 9 * * *'        # 16:00 Asia/Bangkok -- print-queue digests
+    - cron: '0 14 * * *'       # 21:00 Asia/Bangkok -- daily summaries + photo follow-ups
+    - cron: '0 14 28-31 * *'   # 21:00 Asia/Bangkok, day 28-31 -- monthly summary (cron_jobs.py
+                                # itself checks whether it's actually the last day of the month)
+  workflow_dispatch:
+    inputs:
+      group:
+        description: 'Job group to run (afternoon, evening, monthly)'
+        required: true
+        type: choice
+        options: [afternoon, evening, monthly]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine job group
+        id: group
+        run: |
+          if [ -n "${{ inputs.group }}" ]; then
+            echo "name=${{ inputs.group }}" >> "$GITHUB_OUTPUT"
+          else
+            case "${{ github.event.schedule }}" in
+              '0 9 * * *') echo "name=afternoon" >> "$GITHUB_OUTPUT" ;;
+              '0 14 * * *') echo "name=evening" >> "$GITHUB_OUTPUT" ;;
+              '0 14 28-31 * *') echo "name=monthly" >> "$GITHUB_OUTPUT" ;;
+              *) echo "Unrecognized schedule: ${{ github.event.schedule }}"; exit 1 ;;
+            esac
+          fi
+
+      - name: Run cron_jobs.py ${{ steps.group.outputs.name }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA }}
+          LINE_GROUP_ID_MAHABUCHA: ${{ secrets.LINE_GROUP_ID_MAHABUCHA }}
+          ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS }}
+        run: python cron_jobs.py ${{ steps.group.outputs.name }}

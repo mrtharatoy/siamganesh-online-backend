@@ -95,33 +95,29 @@ siamganesh-online-backend/
 
 แต่ละงานตรวจค่าเปิด/ปิดจาก `system_settings` ก่อนส่ง จึงควบคุมได้จากหน้า Settings โดยไม่เกี่ยวกับระบบข้อความลูกค้า
 
-### การตั้งเวลา: Render Cron Jobs (ไม่ใช่ scheduler ในเว็บ)
+### การตั้งเวลา: GitHub Actions (ไม่ใช่ scheduler ในเว็บ, ไม่ผูกกับ Render เลย)
 
 เดิมงานเหล่านี้รันด้วย APScheduler ในตัวโปรเซสเว็บเดียวกับที่รับ HTTP request — ปัญหาคือถ้า gunicorn worker ถูกฆ่า/รีสตาร์ท (เช่น request ที่ทำงานช้ากว่าค่า `--timeout` ของ gunicorn) thread ของ scheduler จะหายไปเงียบๆ โดยไม่มี error log ใดๆ ทำให้ automation ไม่ส่งในวันนั้นโดยไม่มีร่องรอย (เหตุการณ์นี้เคยเกิดขึ้นจริง — ดู incident วันที่ 2026-08-03)
 
-ตอนนี้ย้ายมาใช้ **Render Cron Jobs** แทน ซึ่งเป็นฟีเจอร์แยกต่างหากของ Render ที่รัน process สั้นๆ ตามตารางเวลาโดยไม่ผูกกับ web service เลย งานทั้งหมดเรียกผ่าน `cron_jobs.py` ที่ root ของ repo นี้:
+ตอนนี้ย้ายมาใช้ **GitHub Actions scheduled workflow** ([.github/workflows/cron.yml](.github/workflows/cron.yml)) แทน ซึ่งรันบน runner ของ GitHub เอง **ไม่ผูกกับ Render web service เลยแม้แต่น้อย** — เว็บเซอร์วิสจะ sleep, รีสตาร์ท, หรืออยู่บน plan ไหนก็ไม่กระทบงานพวกนี้ เพราะไม่ได้เรียกผ่านเว็บ แต่ checkout โค้ดจาก repo นี้มารันตรงๆ ด้วย `python cron_jobs.py <group>`. เนื่องจาก repo นี้เป็น public repo, GitHub Actions ใช้ฟรีไม่จำกัดเวลา (ไม่มีค่าใช้จ่ายส่วนนี้เลย)
 
-| Cron Job (ตั้งใน Render Dashboard) | Schedule (UTC) | Command |
+| Schedule (UTC ใน cron.yml) | เวลาไทย | Group ที่รัน |
 |:---|:---|:---|
-| `siamganesh-cron-afternoon` | `0 9 * * *` (16:00 ไทย) | `python cron_jobs.py afternoon` |
-| `siamganesh-cron-evening` | `0 14 * * *` (21:00 ไทย) | `python cron_jobs.py evening` |
-| `siamganesh-cron-monthly` | `0 14 28-31 * *` (21:00 ไทย, วันที่ 28-31) | `python cron_jobs.py monthly` |
+| `0 9 * * *` | 16:00 | `afternoon` — print-queue digests ทุกเพจ |
+| `0 14 * * *` | 21:00 | `evening` — สรุปยอด + ติดตามคิวส่งภาพ ทุกเพจ |
+| `0 14 28-31 * *` | 21:00 วันที่ 28-31 | `monthly` — สรุปยอดรายเดือนมูเตทีม |
 
 > `monthly` ไม่ได้ตั้งเป็น "วันสุดท้ายของเดือน" ตรงๆ เพราะ cron syntax มาตรฐานไม่มีฟิลด์แบบนั้น จึงตั้งให้รันทุกวันที่ 28-31 แล้วให้ `cron_jobs.py` เช็คเองว่าเป็นวันสุดท้ายของเดือนจริงหรือไม่ (ถ้าไม่ใช่จะ skip)
 
-**ขั้นตอนสร้างใน Render**: New → Cron Job → เลือก Repository เดียวกับ Web Service นี้ → ตั้ง Build Command เป็น `pip install -r requirements.txt` → ใส่ Schedule และ Start Command ตามตารางด้านบน → ทำซ้ำ 3 ครั้งสำหรับทั้ง 3 job
-
-**สำคัญ — ตัวแปร Environment ต้องตั้งแยกใหม่**: Render Cron Job แต่ละตัวมีชุด Environment Variables เป็นของตัวเอง **ไม่ได้ใช้ร่วมกับ Web Service โดยอัตโนมัติ** ต้องเข้าไปตั้งค่าในเมนู Environment ของแต่ละ Cron Job ให้ตรงกับของ Web Service (`siamganesh-online-backend`) ทั้งหมดนี้:
+**ตั้งค่าที่ต้องทำครั้งเดียว**: เข้า GitHub repo นี้ → Settings → Secrets and variables → Actions → New repository secret → เพิ่มทั้ง 5 ค่านี้ (ค่าเดียวกับที่ตั้งใน Render web service):
 
 - `SUPABASE_URL`
 - `SUPABASE_KEY`
 - `LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA`
 - `LINE_GROUP_ID_MAHABUCHA`
-- `ALLOWED_ORIGINS` — ไม่เกี่ยวกับ cron โดยตรง แต่ `config.py` เช็คค่านี้ตอน import และจะ raise error ทันทีถ้าไม่ได้ตั้ง (ทำให้ cron job ล้มเหลวหมดทั้ง process แม้ logic จริงจะไม่ต้องใช้ CORS เลย) ตั้งเป็นค่าเดียวกับ Web Service ได้เลย
+- `ALLOWED_ORIGINS` — ไม่เกี่ยวกับ cron โดยตรง แต่ `config.py` เช็คค่านี้ตอน import และจะ raise error ทันทีถ้าไม่ได้ตั้ง (ทำให้ job ล้มเหลวหมดทั้ง process แม้ logic จริงจะไม่ต้องใช้ CORS เลย) ตั้งเป็นค่าเดียวกับ Web Service ได้เลย
 
-วิธีที่ปลอดภัยที่สุดคือใช้ **Render Environment Group** (Dashboard → Env Groups) ผูก 4-5 ตัวแปรนี้ไว้ที่เดียว แล้ว link เข้ากับทั้ง Web Service และ Cron Job ทั้ง 3 ตัว — จะได้ไม่ต้อง copy ค่าด้วยมือและพลาดพิมพ์ key ผิด/ค่าไม่ตรงกันระหว่าง service
-
-**เช็คหลัง deploy**: หลังสร้าง Cron Job ครบแล้ว ให้กด "Trigger Run" ทดสอบ 1 ครั้งต่อ job (Render มีปุ่มนี้ให้กดรันทันทีโดยไม่ต้องรอถึงเวลา) แล้วดู Logs ของ Cron Job นั้นว่ามีบรรทัด `[TIMER]` ขึ้นต้นให้เห็นหรือไม่ (ถ้าไม่มีเลย แปลว่า key ไม่ตรง/ค่าง่ายหรือ import ล้มเหลวตั้งแต่ต้น)
+**เช็คว่าใช้งานได้**: ไปที่แท็บ Actions ของ repo → เลือก workflow "Scheduled LINE jobs" → กด "Run workflow" (มี `workflow_dispatch` ให้ทดสอบรันได้ทันทีโดยเลือก group เอง ไม่ต้องรอถึงเวลาจริง) → ดู log ของ step "Run cron_jobs.py" ว่ามีบรรทัด `[TIMER]` ขึ้นต้นให้เห็นหรือไม่ (ถ้าไม่มีเลย แปลว่า secret ไม่ตรง/ขาดตัวไหนไป)
 
 ---
 
