@@ -84,16 +84,44 @@ siamganesh-online-backend/
 
 ## ⏰ แจ้งเตือน LINE ตามกำหนดเวลา
 
-Backend ใช้ APScheduler (เวลา Asia/Bangkok) ส่งข้อความไปยัง LINE Group เดียวของระบบ:
+งานแจ้งเตือนตามเวลา (เวลา Asia/Bangkok) ส่งข้อความไปยัง LINE Group เดียวของระบบ:
 
 - เวลา 16:00 เฉพาะ **วันก่อนวันจัดพิธี 1 วัน** และ **วันจัดพิธี**: แจ้งเตือนคิวที่ยังค้างปริ้นของงานนั้น พร้อมชื่องานพิธีและจำนวนรายการแยกตามราคาที่ลูกค้าเลือก; ทั้งสองครั้ง หากไม่มีค้างปริ้น จะส่งข้อความยืนยันว่าไม่มีค้างปริ้น
 - ทุกวัน 21:00: สรุปยอดงานพิธีของมหาบูชา, มูเตทีมงานพิธี, ลาว และราชประสงค์
 - ทุกวัน 21:00 หลังวันจัดพิธี: สำหรับมหาบูชา, มูเตทีม (งานพิธี), ลาว และราชประสงค์ สามารถเปิด “ติดตามคิวรอส่งภาพ” รายเพจได้ ระบบจะแจ้งจำนวนลูกค้าที่ยังอยู่สถานะ `ready_to_send` ต่อเนื่องจนหมด และแจ้งปิดคิวหนึ่งครั้งเมื่อส่งภาพครบ
 - วันสุดท้ายของเดือน 21:00: สรุปยอดรายเดือนของมูเตทีม
 
-ชื่อเพจที่อยู่ในข้อความ LINE ทุกประเภท (คิวค้างปริ้น, สรุปยอด, ติดตาม/ปิดคิวส่งภาพ) อ่านจาก `system_settings.page_configuration` ซึ่งเป็นค่ากลางเดียวกับเมนู **ตั้งค่าเพจ**. สถานะเปิด/ปิดจากค่านี้เป็นเงื่อนไขแรกของ scheduler: เพจที่ปิดจะไม่ส่ง automation ใด ๆ. หากอ่านค่ากลางไม่ได้ ระบบจึงใช้ชื่อมาตรฐานใน registry เป็น fallback เพื่อไม่ให้ scheduler หยุดทำงาน.
+ชื่อเพจที่อยู่ในข้อความ LINE ทุกประเภท (คิวค้างปริ้น, สรุปยอด, ติดตาม/ปิดคิวส่งภาพ) อ่านจาก `system_settings.page_configuration` ซึ่งเป็นค่ากลางเดียวกับเมนู **ตั้งค่าเพจ**. สถานะเปิด/ปิดจากค่านี้เป็นเงื่อนไขแรกของแต่ละงาน: เพจที่ปิดจะไม่ส่ง automation ใด ๆ. หากอ่านค่ากลางไม่ได้ ระบบจึงใช้ชื่อมาตรฐานใน registry เป็น fallback เพื่อไม่ให้งานหยุดทำงาน.
 
 แต่ละงานตรวจค่าเปิด/ปิดจาก `system_settings` ก่อนส่ง จึงควบคุมได้จากหน้า Settings โดยไม่เกี่ยวกับระบบข้อความลูกค้า
+
+### การตั้งเวลา: Render Cron Jobs (ไม่ใช่ scheduler ในเว็บ)
+
+เดิมงานเหล่านี้รันด้วย APScheduler ในตัวโปรเซสเว็บเดียวกับที่รับ HTTP request — ปัญหาคือถ้า gunicorn worker ถูกฆ่า/รีสตาร์ท (เช่น request ที่ทำงานช้ากว่าค่า `--timeout` ของ gunicorn) thread ของ scheduler จะหายไปเงียบๆ โดยไม่มี error log ใดๆ ทำให้ automation ไม่ส่งในวันนั้นโดยไม่มีร่องรอย (เหตุการณ์นี้เคยเกิดขึ้นจริง — ดู incident วันที่ 2026-08-03)
+
+ตอนนี้ย้ายมาใช้ **Render Cron Jobs** แทน ซึ่งเป็นฟีเจอร์แยกต่างหากของ Render ที่รัน process สั้นๆ ตามตารางเวลาโดยไม่ผูกกับ web service เลย งานทั้งหมดเรียกผ่าน `cron_jobs.py` ที่ root ของ repo นี้:
+
+| Cron Job (ตั้งใน Render Dashboard) | Schedule (UTC) | Command |
+|:---|:---|:---|
+| `siamganesh-cron-afternoon` | `0 9 * * *` (16:00 ไทย) | `python cron_jobs.py afternoon` |
+| `siamganesh-cron-evening` | `0 14 * * *` (21:00 ไทย) | `python cron_jobs.py evening` |
+| `siamganesh-cron-monthly` | `0 14 28-31 * *` (21:00 ไทย, วันที่ 28-31) | `python cron_jobs.py monthly` |
+
+> `monthly` ไม่ได้ตั้งเป็น "วันสุดท้ายของเดือน" ตรงๆ เพราะ cron syntax มาตรฐานไม่มีฟิลด์แบบนั้น จึงตั้งให้รันทุกวันที่ 28-31 แล้วให้ `cron_jobs.py` เช็คเองว่าเป็นวันสุดท้ายของเดือนจริงหรือไม่ (ถ้าไม่ใช่จะ skip)
+
+**ขั้นตอนสร้างใน Render**: New → Cron Job → เลือก Repository เดียวกับ Web Service นี้ → ตั้ง Build Command เป็น `pip install -r requirements.txt` → ใส่ Schedule และ Start Command ตามตารางด้านบน → ทำซ้ำ 3 ครั้งสำหรับทั้ง 3 job
+
+**สำคัญ — ตัวแปร Environment ต้องตั้งแยกใหม่**: Render Cron Job แต่ละตัวมีชุด Environment Variables เป็นของตัวเอง **ไม่ได้ใช้ร่วมกับ Web Service โดยอัตโนมัติ** ต้องเข้าไปตั้งค่าในเมนู Environment ของแต่ละ Cron Job ให้ตรงกับของ Web Service (`siamganesh-online-backend`) ทั้งหมดนี้:
+
+- `SUPABASE_URL`
+- `SUPABASE_KEY`
+- `LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA`
+- `LINE_GROUP_ID_MAHABUCHA`
+- `ALLOWED_ORIGINS` — ไม่เกี่ยวกับ cron โดยตรง แต่ `config.py` เช็คค่านี้ตอน import และจะ raise error ทันทีถ้าไม่ได้ตั้ง (ทำให้ cron job ล้มเหลวหมดทั้ง process แม้ logic จริงจะไม่ต้องใช้ CORS เลย) ตั้งเป็นค่าเดียวกับ Web Service ได้เลย
+
+วิธีที่ปลอดภัยที่สุดคือใช้ **Render Environment Group** (Dashboard → Env Groups) ผูก 4-5 ตัวแปรนี้ไว้ที่เดียว แล้ว link เข้ากับทั้ง Web Service และ Cron Job ทั้ง 3 ตัว — จะได้ไม่ต้อง copy ค่าด้วยมือและพลาดพิมพ์ key ผิด/ค่าไม่ตรงกันระหว่าง service
+
+**เช็คหลัง deploy**: หลังสร้าง Cron Job ครบแล้ว ให้กด "Trigger Run" ทดสอบ 1 ครั้งต่อ job (Render มีปุ่มนี้ให้กดรันทันทีโดยไม่ต้องรอถึงเวลา) แล้วดู Logs ของ Cron Job นั้นว่ามีบรรทัด `[TIMER]` ขึ้นต้นให้เห็นหรือไม่ (ถ้าไม่มีเลย แปลว่า key ไม่ตรง/ค่าง่ายหรือ import ล้มเหลวตั้งแต่ต้น)
 
 ---
 
@@ -209,7 +237,7 @@ gunicorn app:app --bind 0.0.0.0:5000 --workers 4 --threads 2 --timeout 60
 ```
 
 ### การ Deploy บน Cloud Platforms:
-*   **Render / Railway / Fly.io**: สามารถเชื่อมต่อ Repository นี้ และตั้งค่า environment variables ในเมนู Dashboard และกำหนด Start Command เป็น:
+*   **Render**: แพลตฟอร์มที่ใช้รัน backend นี้จริงในปัจจุบัน เชื่อมต่อ Repository นี้ และตั้งค่า environment variables ในเมนู Dashboard (https://dashboard.render.com) และกำหนด Start Command เป็น:
     `gunicorn app:app --bind 0.0.0.0:$PORT`
 *   **Docker Container**: สามารถสร้าง `Dockerfile` สำหรับติดตั้ง dependencies และสั่งรันเซิร์ฟเวอร์เพื่อให้มีความสม่ำเสมอในทุกสภาพแวดล้อมระบบปฏิบัติการ
 

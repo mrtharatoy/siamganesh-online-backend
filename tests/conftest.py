@@ -2,18 +2,18 @@
 Shared pytest fixtures for testing app.py.
 
 app.py is a single-file Flask app that, at *module import time*,
-unconditionally:
-  1. calls update_file_list(), which makes real HTTP requests to the
-     GitHub API to sync the image cache, and
-  2. starts a live APScheduler BackgroundScheduler with jobs (one of
-     which is scheduled to fire "immediately" via next_run_time=now()).
+unconditionally calls update_file_list(), which makes real HTTP requests
+to the GitHub API to sync the image cache.
 
-Neither of those is safe or desirable to run for real during a test
-suite (network calls, real background threads, live cron jobs hitting
-LINE). This conftest neutralizes those specific side
-effects for the *import itself* so that the rest of app.py's pure
-helper functions can be exercised safely and deterministically, without
-patching or changing any of app.py's actual logic.
+That isn't safe or desirable to run for real during a test suite
+(network calls hitting a real external service). This conftest
+neutralizes that specific side effect for the *import itself* so that
+the rest of app.py's pure helper functions can be exercised safely and
+deterministically, without patching or changing any of app.py's actual
+logic. (Scheduled jobs -- previously a live APScheduler
+BackgroundScheduler started at import time -- now run out-of-process via
+Render Cron Jobs invoking cron_jobs.py, so there's no scheduler start to
+neutralize here anymore.)
 """
 import os
 import sys
@@ -39,11 +39,10 @@ os.environ["ALLOWED_ORIGINS"] = "https://example.com"
 def _import_app_safely():
     """
     Imports app.py once for the whole test session with its
-    module-level network call and scheduler start neutralized.
+    module-level network call neutralized.
     """
     with mock.patch("requests.get", side_effect=RuntimeError("network disabled in tests")), \
-         mock.patch("requests.post", side_effect=RuntimeError("network disabled in tests")), \
-         mock.patch("apscheduler.schedulers.background.BackgroundScheduler.start", lambda self: None):
+         mock.patch("requests.post", side_effect=RuntimeError("network disabled in tests")):
         import app  # noqa: F401  (import triggers app.py's module-level code once)
     yield
 

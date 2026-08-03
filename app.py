@@ -6,7 +6,6 @@ import requests
 import time
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
-from apscheduler.schedulers.background import BackgroundScheduler
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -551,23 +550,13 @@ def muteteam_monthly_summary():
     except Exception as e:
         print(f"❌ [SUMMARY] Error in muteteam monthly summary: {e}")
 
-# Start the background scheduler
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=mahabucha_print_queue_digest, trigger="cron", hour=16, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=muteteam_print_queue_digest, trigger="cron", hour=16, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=muteteam_ceremony_print_queue_digest, trigger="cron", hour=16, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=laos_print_queue_digest, trigger="cron", hour=16, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=ratchaprasong_print_queue_digest, trigger="cron", hour=16, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=mahabucha_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=muteteam_ceremony_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=laos_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=ratchaprasong_daily_summary, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=mahabucha_photo_delivery_followup, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=muteteam_ceremony_photo_delivery_followup, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=laos_photo_delivery_followup, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=ratchaprasong_photo_delivery_followup, trigger="cron", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.add_job(func=muteteam_monthly_summary, trigger="cron", day="last", hour=21, minute=0, timezone=timezone(timedelta(hours=7)))
-scheduler.start()
+# SG-B-3xx: the in-process BackgroundScheduler used to live here. It ran
+# inside the same gunicorn worker that serves web requests, so a worker
+# restart (e.g. gunicorn's default request timeout killing a stuck worker)
+# silently dropped the scheduler thread with no error logged -- cron jobs
+# would then just never fire again until the next deploy. Job scheduling
+# now lives entirely in Render Cron Jobs (see README.md), which run these
+# same functions via cron_jobs.py as short-lived, independent processes.
 
 
 if __name__ == '__main__':
