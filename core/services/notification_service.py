@@ -27,7 +27,11 @@ def booking_display_name(person1_name=None, person2_name=None, customer_name=Non
 
 
 def _build_print_queue_digest_message(owner, items, ceremony_names=None):
-    """items: current list of bookings in ``waiting_print`` for owner."""
+    """items: current list of bookings in ``waiting_print`` for owner, each
+    with a pre-resolved ``price_label`` (tier name, or a formatted raw price
+    for bookings whose tier can't be resolved) -- resolving that label
+    requires reading `tray_pricing`, which this module deliberately has no
+    Supabase access to do itself; see core/services/pricing_service.py."""
     now_th = datetime.now(timezone(timedelta(hours=7)))
     date_str = format_thai_date(now_th)
 
@@ -50,13 +54,12 @@ def _build_print_queue_digest_message(owner, items, ceremony_names=None):
     lines.extend([
         "สถานะ: มีรายการค้างปริ้น",
     ])
-    count_by_price = defaultdict(int)
+    count_by_label = defaultdict(int)
     for item in items:
-        count_by_price[item.get("total_price")] += 1
-    for price, count in sorted(count_by_price.items(), key=lambda entry: (entry[0] is None, entry[0] or 0)):
-        price_label = "ไม่ระบุราคา" if price is None else f"฿{float(price):,.0f}"
+        count_by_label[item.get("price_label") or "ไม่ระบุราคา"] += 1
+    for price_label, count in sorted(count_by_label.items()):
         # "ใบ" matches the unit an operator must physically print, and
-        # keeps the digest useful even when several bookings share a price.
+        # keeps the digest useful even when several bookings share a tier.
         lines.append(f"- ราคา {price_label} จำนวน {count} ใบ")
 
     return "\n".join(lines)

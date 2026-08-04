@@ -46,6 +46,7 @@ app.register_blueprint(images_bp)
 from core.clients.line_client import send_line_notification
 from core.services.notification_service import format_thai_date, send_print_queue_digest
 from core.services.page_configuration_service import get_owner_display_name, is_owner_enabled
+from core.services.pricing_service import get_tier_name_map, resolve_price_label
 from core.blueprints.notifications import notifications_bp
 app.register_blueprint(notifications_bp)
 
@@ -283,14 +284,16 @@ def _owner_print_queue_digest(owner):
         scheduled_ids = {gallery["id"] for gallery in scheduled_galleries}
         res_bookings = requests.get(
             f"{rest_base}/bookings", headers=headers,
-            params={"owner": f"eq.{owner}", "status": "eq.waiting_print", "select": "gallery_id,total_price"},
+            params={"owner": f"eq.{owner}", "status": "eq.waiting_print", "select": "gallery_id,total_price,tray_items"},
             timeout=15,
         )
         if res_bookings.status_code != 200:
             return
+        bookings_json = res_bookings.json()
+        tier_map = get_tier_name_map(owner) if bookings_json else {}
         items = [
-            {"total_price": booking.get("total_price")}
-            for booking in res_bookings.json()
+            {"price_label": resolve_price_label(tier_map, booking)}
+            for booking in bookings_json
             if booking.get("gallery_id") in scheduled_ids
         ]
         ceremony_names = list(dict.fromkeys(
@@ -370,6 +373,7 @@ def _owner_daily_summary(owner, setting_id):
             return
 
         events_data = res_galleries.json()
+        tier_map = get_tier_name_map(owner)
 
         for ev in events_data:
             ev_date_str = ev.get("event_date")
@@ -386,7 +390,7 @@ def _owner_daily_summary(owner, setting_id):
 
             # Fetch all bookings for this gallery (any status)
             url_bookings = f"{rest_base}/bookings"
-            res_bookings = requests.get(url_bookings, headers=headers, params={"gallery_id": f"eq.{ev['id']}", "select": "total_price,tray_count,created_at"}, timeout=10)
+            res_bookings = requests.get(url_bookings, headers=headers, params={"gallery_id": f"eq.{ev['id']}", "select": "total_price,tray_count,created_at,tray_items"}, timeout=10)
             if res_bookings.status_code != 200:
                 continue
 
@@ -396,6 +400,10 @@ def _owner_daily_summary(owner, setting_id):
             yesterday_2100 = now.replace(hour=21, minute=0, second=0, microsecond=0) - timedelta(days=1)
             today_2100 = now.replace(hour=21, minute=0, second=0, microsecond=0)
 
+            # Keyed by resolved tier label rather than raw total_price: a
+            # tier's price can vary day-to-day (see the laos LAK-conversion
+            # feature), so grouping by the exact price number would otherwise
+            # fragment into one bucket per booking instead of per tier.
             total_by_price = defaultdict(int)
             today_by_price = defaultdict(int)
 
@@ -405,16 +413,16 @@ def _owner_daily_summary(owner, setting_id):
                     continue
 
                 b_created_at = datetime.fromisoformat(b_created_at_str.replace("Z", "+00:00")).astimezone(tz)
-                price = b.get("total_price") or 0
+                price_label = resolve_price_label(tier_map, b)
                 count = b.get("tray_count") or 1
 
                 # We only count bookings created before or exactly at today 21:00
                 if b_created_at <= today_2100:
-                    total_by_price[price] += count
+                    total_by_price[price_label] += count
 
                     # If created after yesterday 21:00, it's today's increment
                     if b_created_at > yesterday_2100:
-                        today_by_price[price] += count
+                        today_by_price[price_label] += count
 
             page_name = get_owner_display_name(owner)
             # Format message.  Both the page label and the fallback ceremony name
@@ -427,18 +435,18 @@ def _owner_daily_summary(owner, setting_id):
 
             msg += "[ 📈 ยอดจองเพิ่มวันนี้ (รอบ 24 ชม.) ]\n"
             today_total = 0
-            for price in sorted(today_by_price.keys()):
-                c = today_by_price[price]
+            for price_label in sorted(today_by_price.keys()):
+                c = today_by_price[price_label]
                 today_total += c
-                msg += f"- แบบ {price} จำนวน +{c} ถาด\n"
+                msg += f"- แบบ {price_label} จำนวน +{c} ถาด\n"
             msg += f"รวมเพิ่มวันนี้ +{today_total} ถาด\n\n"
 
             msg += "[ 📊 ยอดรวมสะสมทั้งหมด ]\n"
             overall_total = 0
-            for price in sorted(total_by_price.keys()):
-                c = total_by_price[price]
+            for price_label in sorted(total_by_price.keys()):
+                c = total_by_price[price_label]
                 overall_total += c
-                msg += f"- แบบ {price} จำนวน {c} ถาด\n"
+                msg += f"- แบบ {price_label} จำนวน {c} ถาด\n"
             msg += f"✅ รวมสะสมทั้งหมด {overall_total} ถาด\n\n"
 
             if is_final:
@@ -494,31 +502,34 @@ def muteteam_monthly_summary():
         
         # 2. Fetch all bookings for muteteam
         url_bookings = f"{rest_base}/bookings"
-        res_bookings = requests.get(url_bookings, headers=headers, params={"owner": "eq.muteteam", "select": "total_price,tray_count,created_at"}, timeout=10)
+        res_bookings = requests.get(url_bookings, headers=headers, params={"owner": "eq.muteteam", "select": "total_price,tray_count,created_at,tray_items"}, timeout=10)
         if res_bookings.status_code != 200:
             return
-            
+
         bookings_data = res_bookings.json()
-        
+        tier_map = get_tier_name_map("muteteam")
+
         # Current month cutoff
         start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        
+
+        # Keyed by resolved tier label rather than raw total_price -- see the
+        # matching comment in _owner_daily_summary above.
         total_by_price = defaultdict(int)
         month_by_price = defaultdict(int)
-        
+
         for b in bookings_data:
             b_created_at_str = b.get("created_at")
             if not b_created_at_str:
                 continue
-                
+
             b_created_at = datetime.fromisoformat(b_created_at_str.replace("Z", "+00:00")).astimezone(tz)
-            price = b.get("total_price") or 0
+            price_label = resolve_price_label(tier_map, b)
             count = b.get("tray_count") or 1
-            
-            total_by_price[price] += count
-                
+
+            total_by_price[price_label] += count
+
             if b_created_at >= start_of_month:
-                month_by_price[price] += count
+                month_by_price[price_label] += count
                     
         # Formatting month in Thai
         months_th = ["", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"]
@@ -529,18 +540,18 @@ def muteteam_monthly_summary():
         
         msg += "[ 📈 ยอดจองใหม่ในเดือนนี้ ]\n"
         month_total = 0
-        for price in sorted(month_by_price.keys()):
-            c = month_by_price[price]
+        for price_label in sorted(month_by_price.keys()):
+            c = month_by_price[price_label]
             month_total += c
-            msg += f"- แบบ {price} จำนวน {c} ถาด\n"
+            msg += f"- แบบ {price_label} จำนวน {c} ถาด\n"
         msg += f"รวมยอดใหม่เดือนนี้ {month_total} ถาด\n\n"
-        
+
         msg += "[ 📊 ยอดรวมสะสมทั้งหมด (ตั้งแต่เริ่มต้น) ]\n"
         overall_total = 0
-        for price in sorted(total_by_price.keys()):
-            c = total_by_price[price]
+        for price_label in sorted(total_by_price.keys()):
+            c = total_by_price[price_label]
             overall_total += c
-            msg += f"- แบบ {price} จำนวน {c} ถาด\n"
+            msg += f"- แบบ {price_label} จำนวน {c} ถาด\n"
         msg += f"✅ รวมสะสมทั้งหมด {overall_total} ถาด\n"
         
         # Send via Line

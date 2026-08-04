@@ -47,20 +47,25 @@ def test_digest_skipped_when_owner_explicitly_disabled(app_module, supabase_conf
 
 def test_digest_sends_every_pending_price_to_the_template(app_module, supabase_configured):
     bookings = [
-        {"gallery_id": "event-1", "total_price": 269},
-        {"gallery_id": "event-1", "total_price": 999},
+        {"gallery_id": "event-1", "total_price": 269, "tray_items": []},
+        {"gallery_id": "event-1", "total_price": 999, "tray_items": []},
     ]
 
     with mock.patch(
         "requests.get",
-        side_effect=[_settings_response({"mahabucha": True}), _bookings_response([{"id": "event-1", "caption": "งานมหาบูชา", "event_date": _scheduled_date(1)}]), _bookings_response(bookings)],
+        side_effect=[
+            _settings_response({"mahabucha": True}),
+            _bookings_response([{"id": "event-1", "caption": "งานมหาบูชา", "event_date": _scheduled_date(1)}]),
+            _bookings_response(bookings),
+            _settings_response({}),  # tray_pricing lookup -- no configured tiers, falls back to raw price
+        ],
     ), mock.patch.object(app_module, "send_print_queue_digest", return_value=(True, None)) as mock_send:
         app_module._owner_print_queue_digest("mahabucha")
 
     mock_send.assert_called_once()
     owner_arg, items_arg = mock_send.call_args.args
     assert owner_arg == "mahabucha"
-    assert {item["total_price"] for item in items_arg} == {269, 999}
+    assert {item["price_label"] for item in items_arg} == {"฿269", "฿999"}
     assert mock_send.call_args.kwargs == {"ceremony_names": ["งานมหาบูชา"], "send_empty": True}
 
 
@@ -89,12 +94,17 @@ def test_digest_falls_back_to_legacy_enabled_shape(app_module, supabase_configur
     # A setting still shaped as the old single-flag `{"enabled": bool}`
     # (predating the per-owner keys) must still gate every owner.
     bookings = [
-        {"gallery_id": "event-1", "total_price": 269},
+        {"gallery_id": "event-1", "total_price": 269, "tray_items": []},
     ]
 
     with mock.patch(
         "requests.get",
-        side_effect=[_settings_response({"enabled": True}), _bookings_response([{"id": "event-1", "caption": "งานลาว", "event_date": _scheduled_date()}]), _bookings_response(bookings)],
+        side_effect=[
+            _settings_response({"enabled": True}),
+            _bookings_response([{"id": "event-1", "caption": "งานลาว", "event_date": _scheduled_date()}]),
+            _bookings_response(bookings),
+            _settings_response({}),  # tray_pricing lookup
+        ],
     ), mock.patch.object(app_module, "send_print_queue_digest", return_value=(True, None)) as mock_send:
         app_module._owner_print_queue_digest("laos")
 
@@ -112,8 +122,8 @@ def test_digest_legacy_enabled_false_disables_every_owner(app_module, supabase_c
 
 def test_digest_ignores_waiting_print_from_a_different_ceremony(app_module, supabase_configured):
     bookings = [
-        {"gallery_id": "scheduled", "total_price": 269},
-        {"gallery_id": "old-event", "total_price": 999},
+        {"gallery_id": "scheduled", "total_price": 269, "tray_items": []},
+        {"gallery_id": "old-event", "total_price": 999, "tray_items": []},
     ]
     with mock.patch(
         "requests.get",
@@ -121,8 +131,9 @@ def test_digest_ignores_waiting_print_from_a_different_ceremony(app_module, supa
             _settings_response({"mahabucha": True}),
             _bookings_response([{"id": "scheduled", "caption": "งานพรุ่งนี้", "event_date": _scheduled_date(1)}]),
             _bookings_response(bookings),
+            _settings_response({}),  # tray_pricing lookup
         ],
     ), mock.patch.object(app_module, "send_print_queue_digest", return_value=(True, None)) as mock_send:
         app_module._owner_print_queue_digest("mahabucha")
 
-    assert mock_send.call_args.args[1] == [{"total_price": 269}]
+    assert mock_send.call_args.args[1] == [{"price_label": "฿269"}]

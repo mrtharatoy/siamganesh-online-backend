@@ -37,9 +37,9 @@ def test_send_print_queue_digest_is_a_noop_for_empty_items_outside_an_active_cer
 
 def test_send_print_queue_digest_groups_pending_work_by_selected_price():
     items = [
-        {"total_price": 269},
-        {"total_price": 269},
-        {"total_price": 999},
+        {"price_label": "฿269"},
+        {"price_label": "฿269"},
+        {"price_label": "฿999"},
     ]
 
     with mock.patch.object(service, "send_line_notification", return_value=(True, None)) as mock_send:
@@ -54,7 +54,7 @@ def test_send_print_queue_digest_groups_pending_work_by_selected_price():
 
 
 def test_send_print_queue_digest_uses_page_display_name():
-    items = [{"total_price": 269}]
+    items = [{"price_label": "฿269"}]
 
     with mock.patch.object(service, "get_owner_display_name", return_value="สยามคเณศ ลาวใหม่"), \
          mock.patch.object(service, "send_line_notification", return_value=(True, None)) as mock_send:
