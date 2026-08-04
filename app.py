@@ -248,6 +248,7 @@ def _owner_print_queue_digest(owner):
         url_settings = f"{rest_base}/system_settings"
         res_settings = requests.get(url_settings, headers=headers, params={"id": "eq.line_notify_group", "select": "value"}, timeout=10)
         if res_settings.status_code != 200 or not res_settings.json():
+            print(f"❌ [DIGEST] Could not read line_notify_group setting for {owner} (status {res_settings.status_code}); skipping.")
             return
 
         setting_val = res_settings.json()[0].get("value", {})
@@ -288,6 +289,7 @@ def _owner_print_queue_digest(owner):
             timeout=15,
         )
         if res_bookings.status_code != 200:
+            print(f"❌ [DIGEST] Could not fetch waiting_print bookings for {owner} (status {res_bookings.status_code}); skipping.")
             return
         bookings_json = res_bookings.json()
         tier_map = get_tier_name_map(owner) if bookings_json else {}
@@ -355,6 +357,7 @@ def _owner_daily_summary(owner, setting_id):
         url_settings = f"{rest_base}/system_settings"
         res_settings = requests.get(url_settings, headers=headers, params={"id": f"eq.{setting_id}", "select": "value"}, timeout=10)
         if res_settings.status_code != 200 or not res_settings.json():
+            print(f"❌ [SUMMARY] Could not read {setting_id} setting for {owner} (status {res_settings.status_code}); skipping.")
             return
 
         setting_val = res_settings.json()[0].get("value", {})
@@ -369,7 +372,11 @@ def _owner_daily_summary(owner, setting_id):
 
         url_galleries = f"{rest_base}/galleries"
         res_galleries = requests.get(url_galleries, headers=headers, params={"owner": f"eq.{owner}", "event_date": "not.is.null", "select": "id,caption,event_date,created_at"}, timeout=10)
-        if res_galleries.status_code != 200 or not res_galleries.json():
+        if res_galleries.status_code != 200:
+            print(f"❌ [SUMMARY] Could not fetch galleries for {owner} (status {res_galleries.status_code}); skipping.")
+            return
+        if not res_galleries.json():
+            print(f"[TIMER] [SUMMARY] No galleries with an event_date for {owner}.")
             return
 
         events_data = res_galleries.json()
@@ -392,6 +399,7 @@ def _owner_daily_summary(owner, setting_id):
             url_bookings = f"{rest_base}/bookings"
             res_bookings = requests.get(url_bookings, headers=headers, params={"gallery_id": f"eq.{ev['id']}", "select": "total_price,tray_count,created_at,tray_items"}, timeout=10)
             if res_bookings.status_code != 200:
+                print(f"❌ [SUMMARY] Could not fetch bookings for {owner} gallery {ev['id']} (status {res_bookings.status_code}); skipping this event.")
                 continue
 
             bookings_data = res_bookings.json()
@@ -490,6 +498,7 @@ def muteteam_monthly_summary():
         url_settings = f"{rest_base}/system_settings"
         res_settings = requests.get(url_settings, headers=headers, params={"id": "eq.monthly_summary_muteteam", "select": "value"}, timeout=10)
         if res_settings.status_code != 200 or not res_settings.json():
+            print(f"❌ [SUMMARY] Could not read monthly_summary_muteteam setting (status {res_settings.status_code}); skipping.")
             return
             
         setting_val = res_settings.json()[0].get("value", {})
@@ -504,6 +513,7 @@ def muteteam_monthly_summary():
         url_bookings = f"{rest_base}/bookings"
         res_bookings = requests.get(url_bookings, headers=headers, params={"owner": "eq.muteteam", "select": "total_price,tray_count,created_at,tray_items"}, timeout=10)
         if res_bookings.status_code != 200:
+            print(f"❌ [SUMMARY] Could not fetch bookings for muteteam monthly summary (status {res_bookings.status_code}); skipping.")
             return
 
         bookings_data = res_bookings.json()
