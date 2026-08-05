@@ -66,7 +66,7 @@ siamganesh-online-backend/
 | ชื่อตัวแปร | คำอธิบายเพิ่มเติม | ตัวอย่างค่า |
 |:---|:---|:---|
 | `SUPABASE_URL` | URL ของโครงการ Supabase ของคุณ | `https://xxxx.supabase.co` |
-| `SUPABASE_KEY` | Supabase Service Role Key สำหรับจัดการ Supabase Storage | `eyJhbGciOi...` |
+| `SUPABASE_KEY` | Supabase **Service Role Key** (ต้องเป็น service_role เท่านั้น ห้ามใช้ anon key) สำหรับจัดการ Supabase Storage และอ่าน/เขียนตารางที่มี RLS | `eyJhbGciOi...` |
 | `LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA` | LINE Channel Access Token — ใช้ร่วมกันทุกเพจ (มหาบูชา/มูเตทีม/มูเตทีม งานพิธี/ลาว/ราชประสงค์) ตั้งแต่รวม LINE OA เป็นช่องทางเดียว ข้อความแยกความแตกต่างด้วยชื่อเพจในเนื้อหาแทน | `Rws+...` |
 | `LINE_GROUP_ID_MAHABUCHA` | LINE Group ID ปลายทางแจ้งเตือน — ใช้กลุ่มเดียวกันทุกเพจเช่นกัน | `Cxxxxxxxxxxxx` |
 
@@ -120,6 +120,8 @@ siamganesh-online-backend/
 - `ALLOWED_ORIGINS` — ไม่เกี่ยวกับ cron โดยตรง แต่ `config.py` เช็คค่านี้ตอน import และจะ raise error ทันทีถ้าไม่ได้ตั้ง (ทำให้ job ล้มเหลวหมดทั้ง process แม้ logic จริงจะไม่ต้องใช้ CORS เลย) ตั้งเป็นค่าเดียวกับ Web Service ได้เลย
 
 **เช็คว่าใช้งานได้**: ไปที่แท็บ Actions ของ repo → เลือก workflow "Scheduled LINE jobs" → กด "Run workflow" (มี `workflow_dispatch` ให้ทดสอบรันได้ทันทีโดยเลือก group เอง ไม่ต้องรอถึงเวลาจริง) → ดู log ของ step "Run cron_jobs.py" ว่ามีบรรทัด `[TIMER]` ขึ้นต้นให้เห็นหรือไม่ (ถ้าไม่มีเลย แปลว่า secret ไม่ตรง/ขาดตัวไหนไป)
+
+> ⚠️ **Incident วันที่ 2026-08-05**: secret `SUPABASE_KEY` ที่ตั้งไว้ใน GitHub Actions เป็น **anon key** ไม่ใช่ service_role key ทำให้ทุก job รันสำเร็จ (`workflow` แสดงสถานะ success ปกติ) แต่**ไม่เคยส่งข้อความ LINE เลยสักครั้ง** เพราะตาราง `system_settings`/`bookings`/`catalogs` เปิด RLS ให้อ่านได้เฉพาะ role `authenticated`/`service_role` เท่านั้น (ดู `supabase/migrations/20260728220942_fix_rls_policies.sql` ในโปรเจกต์ frontend) — คีย์ผิด role ไม่ error แต่ได้ HTTP 200 พร้อม array ว่างเปล่า ซึ่งโค้ดเดิมตีความว่า "ไม่มีการตั้งค่านี้" แล้วข้ามการส่งไปเงียบๆ ทุกเพจทุกวัน. ตอนนี้ `config.py` จะ decode JWT ของ `SUPABASE_KEY` ตอนแอปเริ่มทำงาน แล้วพิมพ์คำเตือนตัวใหญ่ทันทีถ้า role ไม่ใช่ `service_role` เพื่อดักปัญหานี้ให้เห็นตั้งแต่บรรทัดแรกของ log แทนที่จะต้องไล่ debug จาก job ที่ "สำเร็จ" แต่เงียบ.
 
 ---
 
