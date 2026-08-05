@@ -8,10 +8,51 @@ Image assets use Supabase Storage; GitHub configuration is intentionally
 absent so this service cannot accidentally use a source-code repository as
 file storage.
 """
+import base64
+import json
 import os
 
 SUPABASE_URL      = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY      = os.environ.get('SUPABASE_KEY')
+
+
+def _decode_jwt_role(token):
+    """Best-effort, unverified decode of a Supabase key's `role` claim.
+    Used only for the startup diagnostic below -- never for authorization."""
+    try:
+        payload_segment = token.split('.')[1]
+        padded = payload_segment + '=' * (-len(payload_segment) % 4)
+        return json.loads(base64.urlsafe_b64decode(padded)).get('role')
+    except Exception:
+        return None
+
+
+# system_settings/bookings/catalogs require the `authenticated` (or
+# service_role, which bypasses RLS outright) Postgres role to SELECT -- see
+# supabase/migrations/20260728220942_fix_rls_policies.sql in the frontend
+# repo. A key of the wrong role doesn't error: every request still returns
+# HTTP 200, just with an empty row array, indistinguishable from "no such
+# row" to a naive caller. This silently broke every scheduled LINE job
+# (daily/monthly summaries, print-queue digest, photo-delivery follow-up)
+# because the deployed SUPABASE_KEY behaved like `anon`, not `service_role`
+# -- caught here, loudly, at import time instead of re-diagnosing it from
+# cron logs again.
+if SUPABASE_KEY:
+    _key_role = _decode_jwt_role(SUPABASE_KEY)
+    if _key_role != 'service_role':
+        print('\n'.join([
+            '=' * 70,
+            '⚠️⚠️⚠️  SUPABASE_KEY IS NOT A service_role KEY  ⚠️⚠️⚠️',
+            f"Decoded role claim: {_key_role!r} (expected 'service_role').",
+            'system_settings/bookings/catalogs require an authenticated or',
+            'service_role Postgres role to read via RLS. Every request will',
+            'still return HTTP 200, just with an EMPTY result -- silently',
+            'skipping every scheduled LINE summary/notification.',
+            'Fix: set SUPABASE_KEY to the service_role secret from Supabase',
+            'Dashboard -> Settings -> API, in both this deploy\'s env vars',
+            'AND the GitHub Actions repo secret used by cron.yml.',
+            '=' * 70,
+        ]))
 
 # All 5 owners (mahabucha, muteteam, muteteam_ceremony, laos,
 # ratchaprasong) now share a single LINE OA token and a single LINE

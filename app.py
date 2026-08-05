@@ -66,6 +66,21 @@ PHOTO_DELIVERY_FOLLOWUP_SETTING = "photo_delivery_followup"
 PHOTO_DELIVERY_FOLLOWUP_STATE_SETTING = "photo_delivery_followup_state"
 
 
+def _log_settings_read_failure(tag, setting_id, owner, response):
+    """A 200-but-empty response is indistinguishable from a genuinely
+    missing setting at the HTTP level, but almost always means SUPABASE_KEY
+    lacks RLS access (see config.py's startup check) rather than the
+    setting never having been created -- flag that possibility explicitly
+    instead of just printing the technically-true "could not read"."""
+    if response.status_code != 200:
+        print(f"❌ [{tag}] Could not read {setting_id} setting for {owner} (status {response.status_code}); skipping.")
+    else:
+        print(
+            f"❌ [{tag}] {setting_id} setting for {owner} returned no rows (status 200); skipping. "
+            "If this setting exists in the admin UI, SUPABASE_KEY likely lacks service_role access -- see the startup warning above."
+        )
+
+
 def _read_setting(rest_base, headers, setting_id):
     response = requests.get(
         f"{rest_base}/system_settings", headers=headers,
@@ -111,7 +126,13 @@ def _owner_photo_delivery_followup(owner):
         headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
         enabled_values = _read_setting(rest_base, headers, PHOTO_DELIVERY_FOLLOWUP_SETTING)
         if not isinstance(enabled_values, dict) or not enabled_values.get(owner, False):
-            print(f"[TIMER] [PHOTO-FOLLOWUP] Disabled for {owner}.")
+            if enabled_values == {}:
+                print(
+                    f"[TIMER] [PHOTO-FOLLOWUP] {PHOTO_DELIVERY_FOLLOWUP_SETTING} setting for {owner} returned no rows (status 200) -- "
+                    "likely SUPABASE_KEY lacks service_role access rather than being genuinely disabled; see the startup warning above."
+                )
+            else:
+                print(f"[TIMER] [PHOTO-FOLLOWUP] Disabled for {owner}.")
             return
 
         tz = timezone(timedelta(hours=7))
@@ -248,7 +269,7 @@ def _owner_print_queue_digest(owner):
         url_settings = f"{rest_base}/system_settings"
         res_settings = requests.get(url_settings, headers=headers, params={"id": "eq.line_notify_group", "select": "value"}, timeout=10)
         if res_settings.status_code != 200 or not res_settings.json():
-            print(f"❌ [DIGEST] Could not read line_notify_group setting for {owner} (status {res_settings.status_code}); skipping.")
+            _log_settings_read_failure("DIGEST", "line_notify_group", owner, res_settings)
             return
 
         setting_val = res_settings.json()[0].get("value", {})
@@ -357,7 +378,7 @@ def _owner_daily_summary(owner, setting_id):
         url_settings = f"{rest_base}/system_settings"
         res_settings = requests.get(url_settings, headers=headers, params={"id": f"eq.{setting_id}", "select": "value"}, timeout=10)
         if res_settings.status_code != 200 or not res_settings.json():
-            print(f"❌ [SUMMARY] Could not read {setting_id} setting for {owner} (status {res_settings.status_code}); skipping.")
+            _log_settings_read_failure("SUMMARY", setting_id, owner, res_settings)
             return
 
         setting_val = res_settings.json()[0].get("value", {})
@@ -498,7 +519,7 @@ def muteteam_monthly_summary():
         url_settings = f"{rest_base}/system_settings"
         res_settings = requests.get(url_settings, headers=headers, params={"id": "eq.monthly_summary_muteteam", "select": "value"}, timeout=10)
         if res_settings.status_code != 200 or not res_settings.json():
-            print(f"❌ [SUMMARY] Could not read monthly_summary_muteteam setting (status {res_settings.status_code}); skipping.")
+            _log_settings_read_failure("SUMMARY", "monthly_summary_muteteam", "muteteam", res_settings)
             return
             
         setting_val = res_settings.json()[0].get("value", {})
