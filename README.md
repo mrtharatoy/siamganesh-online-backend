@@ -111,6 +111,8 @@ siamganesh-online-backend/
 
 > **ข้อจำกัดที่ยอมรับแล้ว**: GitHub Actions scheduled workflow เป็น "best effort" ไม่การันตีเวลาแม่นยำ — เคยดีเลย์ถึง ~2 ชม. กว่าจากเวลาที่ตั้งไว้ (ดู incident วันที่ 2026-08-04) ช่วงที่ระบบ GitHub โหลดสูง ถ้าต้องการความตรงเวลาที่แม่นยำกว่านี้ ทางเลือกคือย้ายกลับไปใช้ Render Cron Job (เสียเงินตามเวลาที่รันจริง) แต่ตัดสินใจแล้วว่ายอมรับความดีเลย์เป็นครั้งคราวเพื่อคงค่าใช้จ่ายไว้ที่ $0
 
+> ⚠️ **Incident วันที่ 2026-08-06**: รอบ 21:00 น. รัน**ไม่สำเร็จเลย** (ไม่ใช่แค่ดีเลย์) เพราะ GitHub หา runner ให้ job ไม่ได้เลยหลังพยายามหลายครั้ง ("The job was not acquired by Runner of type hosted even after multiple attempts") จนรอครบ 15 นาทีแล้ว fail — เป็นปัญหาความจุของ GitHub เอง ไม่เกี่ยวกับโค้ดหรือ secret ใดๆ และ GitHub ไม่ retry scheduled run ที่ fail แบบนี้ให้อัตโนมัติ. เพิ่ม [.github/workflows/cron-retry.yml](.github/workflows/cron-retry.yml) เป็น workflow แยกที่ดักฟัง `workflow_run` เมื่อ "Scheduled LINE jobs" fail (เฉพาะที่มาจาก schedule จริง ไม่ใช่การรันมือ) แล้ว retry กลุ่มงานเดิมให้อัตโนมัติ 1 ครั้ง — เดากลุ่มงานจากชั่วโมง (UTC) ที่ run ถูกสร้างขึ้น เนื่องจาก run ที่ไม่ได้ runner เลยไม่มี log ให้ดูว่าตั้งใจรันกลุ่มไหน. เป็น workflow คนละไฟล์กับ `cron.yml` โดยเจตนา เพื่อไม่ให้การ retry เอง trigger ตัวเองซ้ำไม่รู้จบ.
+
 **ตั้งค่าที่ต้องทำครั้งเดียว**: เข้า GitHub repo นี้ → Settings → Secrets and variables → Actions → New repository secret → เพิ่มทั้ง 5 ค่านี้ (ค่าเดียวกับที่ตั้งใน Render web service):
 
 - `SUPABASE_URL`

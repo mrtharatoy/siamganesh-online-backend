@@ -1,0 +1,72 @@
+name: Retry failed scheduled LINE jobs
+
+# GitHub's hosted runner pool occasionally can't acquire a runner for a
+# scheduled run at all -- the job never starts, so there are zero logs and
+# nothing for the primary workflow to catch or recover from itself (seen
+# live on 2026-08-06: run 31118533173 failed after 15 minutes with
+# "The job was not acquired by Runner of type hosted even after multiple
+# attempts"). This is a SEPARATE workflow (rather than cron.yml
+# re-dispatching itself) specifically so its own completion can never
+# re-trigger this same watcher -- no infinite retry loop, and at most one
+# retry per failed scheduled run.
+on:
+  workflow_run:
+    workflows: ["Scheduled LINE jobs"]
+    types: [completed]
+
+jobs:
+  retry:
+    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine job group(s) from the failed run's start hour (UTC)
+        id: group
+        env:
+          CREATED_AT: ${{ github.event.workflow_run.created_at }}
+        run: |
+          # The failed run never got far enough to record which cron.yml
+          # schedule it matched (job never started -- see above), so this
+          # infers it from when GitHub actually created the run instead.
+          # cron.yml's schedules are 09:00 and 14:00 UTC, but GitHub's own
+          # "best effort" scheduling delay (documented in README.md, up to
+          # ~2h observed) means the real created_at is later than that --
+          # 12:00 UTC is the midpoint used to split the two, with enough
+          # margin for the delays seen so far. If a delay ever grows past
+          # ~3h this heuristic would misclassify -- acceptable for a
+          # best-effort safety net, not the primary scheduling path.
+          hour="${CREATED_AT:11:2}"
+          echo "Failed run created at $CREATED_AT (hour=$hour UTC)"
+          if [ "$hour" -ge 4 ] && [ "$hour" -lt 12 ]; then
+            echo "names=afternoon" >> "$GITHUB_OUTPUT"
+          elif [ "$hour" -ge 12 ] && [ "$hour" -lt 20 ]; then
+            # Retry both -- monthly harmlessly no-ops on any day that isn't
+            # actually the last day of the month (see cron_jobs.py's
+            # run_monthly), so this doesn't need to disambiguate further.
+            echo "names=evening monthly" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unrecognized hour $hour for a scheduled run; nothing to retry."
+            echo "names=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Retry cron_jobs.py
+        if: steps.group.outputs.names != ''
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN_MAHABUCHA }}
+          LINE_GROUP_ID_MAHABUCHA: ${{ secrets.LINE_GROUP_ID_MAHABUCHA }}
+          ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS }}
+        run: |
+          for name in ${{ steps.group.outputs.names }}; do
+            echo "▶ Retrying group: $name"
+            python cron_jobs.py "$name"
+          done
